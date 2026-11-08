@@ -1,8 +1,11 @@
 /** Adapt polyphonic Basic Pitch output to a single singing voice.
  * Where detections overlap, keep the highest-confidence event for that interval.
  * This is a melody heuristic, not source separation for accompanied recordings.
+ * By default times are shifted so the first note starts at 0. Pass
+ * { keepOrigin: true } to keep times relative to the start of the recording
+ * (used when a count-in fixes the beat grid).
  */
-export function basicPitchNotesToMelody(events, duration) {
+export function basicPitchNotesToMelody(events, duration, { keepOrigin = false } = {}) {
   const notes = events.filter(n => Number.isInteger(n.pitchMidi) && n.pitchMidi >= 36 && n.pitchMidi <= 84
     && Number.isFinite(n.startTimeSeconds) && Number.isFinite(n.durationSeconds)
     && Number.isFinite(n.amplitude) && n.durationSeconds >= 0.12)
@@ -25,6 +28,6 @@ export function basicPitchNotesToMelody(events, duration) {
     const gap = stable[i+1].start - stable[i].end;
     if (gap > 0 && gap <= 0.25 + 1e-7) stable[i].end = stable[i+1].start;
   }
-  const origin = stable[0]?.start ?? 0;
+  const origin = keepOrigin ? 0 : stable[0]?.start ?? 0;
   return stable.map(n => ({ midi: n.midi, start: n.start - origin, duration: n.end - n.start }));
 }

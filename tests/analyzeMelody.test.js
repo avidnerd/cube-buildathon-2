@@ -33,7 +33,7 @@ test('spells Bb in F, F# in G, and supports explicit enharmonic overrides', () =
   assert.equal(spellPitch(70,'F','sharps').letter,'A');
   const result = melodyToAbc(scale([70,71,70]), { key:'F' });
   assert.match(result.abc,/K:F clef=treble/);
-  assert.match(result.abc,/_B4 =B4 _B4/);
+  assert.match(result.abc,/\nB4 =B4 _B4/); // Bb is in the key signature; the natural and the restored flat are marked
   assert.equal(abcjs.parseOnly(result.abc)[0].warnings,undefined);
 });
 test('every spelling preserves MIDI pitch, including B# octave crossings', () => {

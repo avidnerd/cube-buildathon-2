@@ -6,8 +6,8 @@ shared note model (see src/noteModel.js):
 
     POST /api/counter
     {
-      "notes": [{"midi": 60, "start": 0, "duration": 1}, ...],   # times in beats
-      "key": "C" | "F#m" | ... | null,    # same key names as src/analyzeMelody.js; null = detect
+      "notes": [{"pitch": 60, "start": 0, "duration": 1}, ...],  # docs/SPEC.md notes, beats
+      "key": "G major" | "E minor" | "F#m" | ... | null,           # null = detect
       "meter": "4/4" | "3/4" | "6/8",
       "bpm": 120,
       "voice": "soprano" | "alto" | "tenor" | "bass"
@@ -15,7 +15,7 @@ shared note model (see src/noteModel.js):
 
 and gets the counter-melody back in the same format:
 
-    {"counter": [{"midi": 67, "start": 0, "duration": 2}, ...], "clef": "treble", ...}
+    {"counter": [{"pitch": 67, "start": 0, "duration": 2}, ...], "clef": "treble", ...}
 
     python counter_api.py            # serves on http://127.0.0.1:8001 (Vite proxies /api here)
 
@@ -42,10 +42,14 @@ _ACC = {1: "#", 2: "##", -1: "b", -2: "bb", 0: ""}
 
 
 def key_from_name(name: str) -> KeySig:
-    """'C', 'F#', 'Db', 'Am', 'Ebm' (the names in src/analyzeMelody.js KEYS) -> KeySig."""
+    """'G major', 'E minor' (docs/SPEC.md) or 'C', 'F#', 'Db', 'Am', 'Ebm'
+    (src/analyzeMelody.js KEYS) -> KeySig."""
     text = name.strip()
     mode = "major"
-    if text.endswith("m"):
+    lower = text.lower()
+    if lower.endswith(" major") or lower.endswith(" minor"):
+        mode, text = lower[-5:], text[:-6].strip()
+    elif text.endswith("m"):
         mode, text = "minor", text[:-1]
     if not text or text[0].upper() not in "CDEFGAB" or text[1:] not in ("", "#", "b"):
         raise ValueError(f"Unknown key '{name}'.")
@@ -63,9 +67,10 @@ def notes_from_json(raw) -> list[Note]:
     for i, n in enumerate(raw, 1):
         if not isinstance(n, dict):
             raise ValueError(f"Note {i} must be an object.")
-        midi, start, dur = n.get("midi"), n.get("start"), n.get("duration")
+        midi = n.get("pitch", n.get("midi"))
+        start, dur = n.get("start"), n.get("duration")
         if not isinstance(midi, int) or isinstance(midi, bool) or not 0 <= midi <= 127:
-            raise ValueError(f"Note {i}: midi must be an integer from 0 to 127.")
+            raise ValueError(f"Note {i}: pitch must be an integer MIDI number from 0 to 127.")
         if not all(isinstance(x, (int, float)) and math.isfinite(x) for x in (start, dur)) \
                 or start < 0 or dur <= 0:
             raise ValueError(f"Note {i}: start must be >= 0 and duration > 0 (beats).")
@@ -87,7 +92,7 @@ def score_from_payload(payload: dict) -> Score:
 
 
 def _notes_json(notes: list[Note]) -> list[dict]:
-    return [{"midi": n.midi, "start": n.start, "duration": n.dur}
+    return [{"pitch": n.midi, "start": n.start, "duration": n.dur}
             for n in notes if n.midi is not None]
 
 

@@ -21,4 +21,15 @@ Full feature spec, data model, and build order: @docs/SPEC.md
 
 ## Commands
 
-Not set up yet. When you scaffold the project, add the dev, test, and build commands here.
+- `npm install` once (and `python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt` for Python tests)
+- `npm start`: the app (Vite) plus the Python counter-melody API (`counter_api.py`, port 8001) together
+- `npm test`: JavaScript tests. `.venv/bin/python -m pytest -q`: Python tests
+- `npm run build`: production build into `dist/`
+
+## Code map
+
+- `src/main.jsx`: app shell, hash routes (#record, #arrange, #parts, #practice), project state, shared playback
+- `src/screens/`: one file per screen, built from the `design/*.html` mockups
+- `src/ui/kit.jsx`: header, tab bar, the one piano roll, fader. `src/ui/ScoreSheet.jsx`: sheet music overlay
+- `src/noteModel.js`, `src/project.js`: the docs/SPEC.md note model and project helpers
+- `src/player.js` (Tone.js playback and WAV export), `src/useRecorder.js` (count-in, metronome, Basic Pitch), `src/mix.js` (learning mixes)
