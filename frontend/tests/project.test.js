@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { clefFor, counterText, keyFromSpec, keyToSpec, projectBeats } from '../src/project.js';
-import { mixGains } from '../src/mix.js';
+import { karaokeGains, mixGains } from '../src/mix.js';
 import { makeNote } from '../src/noteModel.js';
 
 test('key names convert between the spec and the analyzer', () => {
@@ -36,4 +36,10 @@ test('learning mixes: solo, predominant, missing', () => {
   assert.deepEqual(mixGains(tracks, { ...base, mode: 'solo' }), { a: 0.8, b: 0.8 });
   assert.deepEqual(mixGains(tracks, { ...base, mute: { a: true } }), { a: 0, b: 0.8 });
   assert.deepEqual(mixGains(tracks, { ...base, solo: 'b', mute: { b: true } }), { a: 0, b: 0.8 });
+});
+
+test('karaoke lifts your part over a quiet band, only when your part is playing', () => {
+  assert.deepEqual(karaokeGains({ a: 0.8, b: 0.2 }, 'a', 'pred'), { a: 1.4, b: 0.2, band: 0.2 });
+  assert.deepEqual(karaokeGains({ a: 0, b: 0.8 }, 'a', 'miss'), { a: 0, b: 0.8 });
+  assert.deepEqual(karaokeGains({ a: 0.8 }, undefined, 'pred'), { a: 0.8 });
 });

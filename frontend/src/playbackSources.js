@@ -34,7 +34,7 @@ function sharedOptions(project, tracks, gains, mix, rate) {
   const allGains = { ...gains };
   if (usable && project.bandUrl) {
     list.push({ id: 'band', notes: [], audio: source(project.bandUrl) });
-    allGains.band = mix.solo ? 0 : BAND_GAIN;
+    allGains.band = mix.solo ? 0 : gains.band ?? BAND_GAIN;
   }
   return { tracks: list, tempo: usable ? bpm : project.tempo, gains: allGains };
 }
@@ -50,7 +50,7 @@ export function playbackOptions(project, tracks, gains, mix, { rate = 1, tones =
   if (timing && hasBand(project)) {
     const { job } = melody.backend;
     list.push({ id: 'band', notes: [], audio: { key: `${job}/accompaniment`, url: stemUrl(job, 'accompaniment'), offset: timing.origin } });
-    allGains.band = bandFits(tracks) && (mix.solo ? mix.solo === 'band' : !mix.mute.band) ? BAND_GAIN : 0;
+    allGains.band = bandFits(tracks) && (mix.solo ? mix.solo === 'band' : !mix.mute.band) ? gains.band ?? BAND_GAIN : 0;
   }
   return { tracks: list, tempo: timing ? timing.bpm : project.tempo, gains: allGains };
 }

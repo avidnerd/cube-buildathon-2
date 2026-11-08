@@ -2,7 +2,7 @@
 // singer's real timing. Also where friends land from a share link.
 import React, { useMemo } from 'react';
 import { TRACK_COLORS, beatsPerBar } from '../project.js';
-import { mixGains } from '../mix.js';
+import { karaokeGains, mixGains } from '../mix.js';
 import { playbackOptions } from '../playbackSources.js';
 import { hasWords, karaokeLines, lineIndexAt, noteName } from '../karaoke.js';
 import { Header, PianoRoll, Top } from '../ui/kit.jsx';
@@ -24,8 +24,9 @@ export function KaraokeScreen({ project, playback, mix, setMix, go, totalBeats }
   const mine = tracks[index];
   const lines = useMemo(() => karaokeLines(melody?.notes ?? []), [melody?.notes]);
   const mode = mix.mode === 'miss' ? 'miss' : 'pred';
-  const gains = mixGains(tracks, { ...mix, mode, solo: null, mute: {} }, { learning: true });
-  useLiveGains(playback, gains);
+  const gains = karaokeGains(mixGains(tracks, { ...mix, mode, solo: null, mute: {} }, { learning: true }), mine?.id, mode);
+  const options = playbackOptions(project, tracks, gains, { mute: {}, solo: null });
+  useLiveGains(playback, options.gains);
 
   if (!melody) return <>
     <Header/>
@@ -41,7 +42,7 @@ export function KaraokeScreen({ project, playback, mix, setMix, go, totalBeats }
   const until = playback.playing && line ? Math.ceil(line.start - beat) : 0;
   const windowNotes = mine && line ? mine.notes.filter(n => n.start < line.end && n.start + n.duration > line.start).map(n => ({ ...n, start: n.start - line.start })) : [];
   const singingNow = mine?.notes.find(n => beat >= n.start && beat < n.start + n.duration);
-  const start = () => playback.play({ ...playbackOptions(project, tracks, gains, { mute: {}, solo: null }), totalBeats });
+  const start = () => playback.play({ ...options, totalBeats });
 
   return <>
     <Header>{project.shared && <a className="ghost txt" href="/">Make your own</a>}</Header>

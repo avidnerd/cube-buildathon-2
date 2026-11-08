@@ -16,3 +16,9 @@ export function mixGains(tracks, mix, { learning = false } = {}) {
   }
   return gains;
 }
+
+/** Karaoke: your part stands out over a quiet band. Leaving your part out changes nothing. */
+export function karaokeGains(gains, singing, mode) {
+  if (!singing || mode !== 'pred') return gains;
+  return { ...gains, [singing]: 1.4, band: 0.2 };
+}
