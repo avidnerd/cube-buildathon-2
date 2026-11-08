@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>4-Track · Harmony Options</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Jersey+15&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#15131F; --deep:#1D1A2B; --line:#2C2840; --well:#0C0B13;
+  --text:#F4EFE6; --muted:#A8A3BC;
+  --t1:#FF6B5B; --t2:#FFBE3D; --t3:#4FDBA0; --t4:#6AA8FF;
+  --cream:#F4EFE6; --cream-edge:#C9C1B3;
+  --px:"Jersey 15",ui-monospace,monospace; --big:"Jersey 15",ui-monospace,monospace; --ctr:"Jersey 15",ui-monospace,monospace;
+  --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:#08070D;color-scheme:dark}
+body{min-height:100vh;display:grid;place-items:center;font:15px/1.35 var(--ui);color:var(--text);background:#08070D;-webkit-font-smoothing:antialiased}
+::selection{background:var(--t2);color:var(--ink)}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+button:focus-visible{outline:2px solid var(--text);outline-offset:2px}
+svg{display:block}
+.phone{position:relative;width:390px;height:844px;background:var(--ink);overflow:hidden;border-radius:46px;box-shadow:0 0 0 10px #000,0 30px 80px rgba(0,0,0,.6)}
+@media (max-width:430px){body{place-items:stretch}.phone{width:100%;height:100vh;height:100dvh;border-radius:0;box-shadow:none}}
+.status{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 26px;font-weight:600}
+.status .sig{display:flex;gap:5px;align-items:center}
+.hdr{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 20px}
+.mark{display:flex;align-items:center;gap:9px;font:400 28px/1 var(--big);letter-spacing:.03em}
+.stripes{display:grid;grid-template-rows:repeat(4,3px);gap:2px;width:22px}
+.stripes i:nth-child(1){background:var(--t1)}.stripes i:nth-child(2){background:var(--t2)}.stripes i:nth-child(3){background:var(--t3)}.stripes i:nth-child(4){background:var(--t4)}
+.ghost{width:40px;height:40px;display:grid;place-items:center;color:var(--muted)}
+.top{display:flex;align-items:center;gap:10px;padding:6px 20px 14px}
+.top .t{flex:1;min-width:0}
+.top h1{font:400 30px/1 var(--big);letter-spacing:.01em}
+.top p{font-size:13px;color:var(--muted);margin-top:3px}
+.counter{background:var(--well);padding:3px 10px 1px;font:30px/1 var(--ctr);letter-spacing:.06em;color:var(--t2);font-variant-numeric:tabular-nums;min-width:68px;text-align:center;border-radius:4px}
+.play{width:46px;height:42px;border-radius:4px;background:var(--cream);color:var(--ink);display:grid;place-items:center;box-shadow:inset 0 -4px 0 var(--cream-edge);transition:transform .08s ease-out}
+.play:active{transform:translateY(2px)}
+.play[aria-pressed="true"]{background:var(--t2);box-shadow:inset 0 -4px 0 #C98E1C}
+/* mix */
+.mix{position:relative;margin:0 20px;height:176px;border-radius:6px;background:var(--deep);overflow:hidden}
+.mix .grid{position:absolute;inset:10px 12px 10px 12px}
+.grid{background:repeating-linear-gradient(90deg,transparent 0 calc(var(--beat) - 1px),rgba(255,255,255,.035) calc(var(--beat) - 1px) var(--beat))}
+.bar{position:absolute;top:0;bottom:0;width:2px;background:var(--line);left:calc(50% - 1px)}
+.ph{position:absolute;top:0;bottom:0;width:2px;background:var(--text);left:0;will-change:transform}
+.n{position:absolute;box-shadow:inset 0 -2px 0 rgba(0,0,0,.25);transition:opacity .25s ease-out}
+/* tracks */
+.tracks{padding:16px 20px 0;display:grid;gap:8px}
+.trk{border-radius:10px;color:var(--ink);transition:background .2s ease-out,color .2s ease-out}
+.row{display:flex;align-items:center;gap:12px;min-height:58px;padding:8px 10px 8px 16px}
+.nm{flex:1;min-width:0;font:400 23px/1 var(--big);letter-spacing:.01em}
+.nm small{display:block;font:500 13px/1.3 var(--ui);letter-spacing:0;opacity:.84;margin-top:1px}
+.ms{display:flex;gap:6px}
+.ms button{width:38px;height:38px;border-radius:8px;font:400 20px var(--big);background:rgba(21,19,31,.1);transition:background .15s ease-out}
+.ms button:hover{background:rgba(21,19,31,.18)}
+.ms button[aria-pressed="true"]{background:var(--ink);color:var(--text)}
+.trk.off{background:var(--deep)!important;color:var(--muted)}
+.trk.off .ms button{background:rgba(244,239,230,.06)}
+.trk.off .ms button[aria-pressed="true"]{background:var(--text);color:var(--ink)}
+.pick{display:grid;grid-template-columns:44px 1fr 44px;align-items:center;margin:0 6px 8px;padding-top:10px;border-top:1.5px solid rgba(21,19,31,.12)}
+.pick button.arrow{height:44px;border-radius:8px;display:grid;place-items:center}
+.pick button.arrow:hover{background:rgba(21,19,31,.1)}
+.pick .mid{text-align:center;min-width:0}
+.pick .mid b{display:block;font:400 26px/1 var(--px);letter-spacing:.04em}
+.pick .mid span{display:block;font-size:13px;opacity:.84;margin-top:1px}
+.pick .mid span.dots{display:flex;gap:5px;justify-content:center;margin-top:7px;opacity:1}
+.dots i{width:6px;height:6px;background:rgba(21,19,31,.22)}
+.dots i.on{background:var(--ink)}
+.trk.off .dots i{background:var(--line)}.trk.off .dots i.on{background:var(--muted)}
+.trk.off .pick{border-color:rgba(244,239,230,.06)}
+.empty{display:flex;align-items:center;gap:12px;width:100%;min-height:58px;padding:0 16px;border-radius:10px;border:2px dashed rgba(106,168,255,.55);color:var(--t4);text-align:left}
+.empty:hover{border-color:var(--t4)}
+.empty .nm small{opacity:.8}
+.cta{position:absolute;left:20px;right:20px;bottom:100px;height:52px;border-radius:6px;background:var(--cream);color:var(--ink);font:400 22px var(--px);letter-spacing:.04em;box-shadow:inset 0 -4px 0 var(--cream-edge);transition:transform .08s ease-out}
+.cta:active{transform:translateY(2px)}
+.tabbar{position:absolute;left:0;right:0;bottom:0;height:83px;display:flex;justify-content:space-around;padding-top:10px}
+.tabbar a{color:inherit;text-decoration:none;width:76px;display:grid;justify-items:center;align-content:start;gap:5px;font:600 11px var(--ui);color:var(--muted)}
+.tabbar svg{width:22px;height:22px}
+.tabbar [aria-current]{color:var(--text)}
+.tabbar [aria-current] svg{color:var(--t2)}
+.toast{position:absolute;left:50%;bottom:164px;transform:translate(-50%,8px);opacity:0;background:var(--text);color:var(--ink);font:16px var(--px);padding:9px 12px;border-radius:4px;transition:opacity .2s ease-out,transform .2s ease-out;pointer-events:none;white-space:nowrap}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<main class="phone" aria-label="4-Track Harmony Options mockup">
+  <div class="status" aria-hidden="true"><span>9:41</span><span class="sig">
+    <svg width="18" height="11" viewBox="0 0 18 11" fill="currentColor"><rect x="0" y="7" width="3" height="4"/><rect x="5" y="5" width="3" height="6"/><rect x="10" y="2" width="3" height="9"/><rect x="15" y="0" width="3" height="11"/></svg>
+    <svg width="25" height="12" viewBox="0 0 25 12" fill="none" stroke="currentColor"><rect x="0.5" y="0.5" width="21" height="11" rx="2"/><rect x="2.5" y="2.5" width="15" height="7" fill="currentColor" stroke="none"/><rect x="23" y="4" width="2" height="4" fill="currentColor" stroke="none"/></svg></span></div>
+
+  <div class="hdr">
+    <span class="mark"><span class="stripes" aria-hidden="true"><i></i><i></i><i></i><i></i></span>4-TRACK</span>
+    <button class="ghost" aria-label="Share project">
+      <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" shape-rendering="crispEdges"><rect x="7" y="1" width="2" height="9"/><rect x="5" y="3" width="2" height="2"/><rect x="9" y="3" width="2" height="2"/><rect x="3" y="7" width="2" height="7"/><rect x="11" y="7" width="2" height="7"/><rect x="3" y="12" width="10" height="2"/></svg>
+    </button>
+  </div>
+
+  <div class="top">
+    <div class="t"><h1>Down to the River</h1><p>G major · 92 bpm · sample project</p></div>
+    <div class="counter" id="counter" aria-label="Position">01.1</div>
+    <button class="play" id="play" aria-label="Play all tracks" aria-pressed="false">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" shape-rendering="crispEdges"><rect x="2" y="1" width="2" height="12"/><rect x="4" y="3" width="2" height="8"/><rect x="6" y="4" width="2" height="6"/><rect x="8" y="5" width="2" height="4"/><rect x="10" y="6" width="2" height="2"/></svg>
+    </button>
+  </div>
+
+  <section class="mix" aria-label="All tracks layered"><div class="grid" id="mixGrid"></div></section>
+
+  <section class="tracks" id="tracks" aria-label="Tracks"></section>
+
+  <button class="cta" id="keep">KEEP 3RDS FOR MAYA</button>
+  <div class="toast" id="toast" role="status"></div>
+
+  <nav class="tabbar" aria-label="Main">
+    <a href="record.html"><svg viewBox="0 0 22 22" fill="currentColor" shape-rendering="crispEdges"><rect x="7" y="2" width="8" height="12"/><rect x="4" y="10" width="2" height="4"/><rect x="16" y="10" width="2" height="4"/><rect x="5" y="14" width="12" height="2"/><rect x="10" y="16" width="2" height="3"/><rect x="7" y="19" width="8" height="2"/></svg>Record</a>
+    <a href="harmony-options.html" aria-current="page"><svg viewBox="0 0 22 22" fill="currentColor" shape-rendering="crispEdges"><rect x="2" y="4" width="18" height="3"/><rect x="2" y="9" width="12" height="3"/><rect x="2" y="14" width="15" height="3"/></svg>Arrange</a>
+    <a href="parts.html"><svg viewBox="0 0 22 22" fill="currentColor" shape-rendering="crispEdges"><rect x="3" y="3" width="2" height="16"/><rect x="10" y="3" width="2" height="16"/><rect x="17" y="3" width="2" height="16"/><rect x="1" y="12" width="6" height="3"/><rect x="8" y="6" width="6" height="3"/><rect x="15" y="10" width="6" height="3"/></svg>Parts</a>
+    <a href="practice.html"><svg viewBox="0 0 22 22" fill="currentColor" shape-rendering="crispEdges"><rect x="2" y="13" width="3" height="3"/><rect x="5" y="10" width="3" height="3"/><rect x="8" y="12" width="3" height="3"/><rect x="11" y="7" width="3" height="3"/><rect x="14" y="9" width="3" height="3"/><rect x="17" y="5" width="3" height="3"/></svg>Practice</a>
+  </nav>
+</main>
+
+<script>
+/* Sample data in the shape of docs/SPEC.md's note model (MIDI pitch, beats). */
+const R=[0,1,2,2.5,3,4,5,6,7], D=[1,1,.5,.5,1,1,1,1,1];
+const line=p=>p.map((pitch,i)=>({pitch,start:R[i],duration:D[i]}));
+const project={key:"G major",tempo:92,tracks:[
+  {id:"t1",name:"MELODY",who:"Priya",color:"var(--t1)",notes:line([62,67,67,69,71,69,67,64,62])},
+  {id:"t2",name:"ALTO",who:"Maya",color:"var(--t2)",pick:0,options:[
+    {label:"PARALLEL 3RDS",short:"3RDS",desc:"Warm, classic pop · easy",notes:line([59,64,64,66,67,66,64,60,59])},
+    {label:"CHORD-TONE",short:"CHORD-TONE",desc:"Follows the chords · hard",notes:line([59,62,62,62,62,62,59,60,59])},
+    {label:"CONTRARY",short:"CONTRARY",desc:"Moves against the tune · medium",notes:line([59,57,57,55,55,57,59,60,59])},
+    {label:"DRONE",short:"DRONE",desc:"One held note · easiest",notes:[{pitch:59,start:0,duration:4},{pitch:59,start:4,duration:4}]}]},
+  {id:"t3",name:"TENOR",who:"Jordan",color:"var(--t3)",notes:line([54,59,59,60,62,60,59,55,54])},
+  {id:"t4",name:"BASS",who:"Sam",color:"var(--t4)",notes:null}]};
+const HI=72,LO=52,BEATS=8;
+const S={mute:{},solo:null,playing:false,t0:0,raf:0};
+const notesOf=t=>t.options?t.options[t.pick].notes:t.notes;
+const on=id=>S.solo?S.solo===id:!S.mute[id];
+
+function paint(grid,track,{rowH,noteH,dim}){
+  const beat=grid.clientWidth/BEATS; grid.style.setProperty('--beat',beat+'px');
+  (notesOf(track)||[]).forEach(n=>{const el=document.createElement('div');el.className='n';
+    el.style.cssText=`left:${n.start*beat+1}px;width:${n.duration*beat-3}px;top:${(HI-n.pitch)*rowH+(rowH-noteH)/2}px;height:${noteH}px;${track.color?`background:${track.color};`:''}${dim!=null?`opacity:${dim}`:''}`;
+    grid.appendChild(el);});
+}
+function scaffold(g,bar){g.innerHTML=(bar?'<div class="bar"></div>':'')+'<div class="ph"></div>';}
+
+function renderMix(){
+  const g=document.getElementById('mixGrid'); scaffold(g,true);
+  const rowH=g.clientHeight/(HI-LO+1);
+  project.tracks.forEach(t=>notesOf(t)&&paint(g,t,{rowH,noteH:rowH-1.5,dim:on(t.id)?1:.12}));
+}
+const arrowL='<svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor" shape-rendering="crispEdges"><rect x="6" y="0" width="2" height="12"/><rect x="4" y="2" width="2" height="8"/><rect x="2" y="4" width="2" height="4"/></svg>';
+const arrowR='<svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor" shape-rendering="crispEdges"><rect x="2" y="0" width="2" height="12"/><rect x="4" y="2" width="2" height="8"/><rect x="6" y="4" width="2" height="4"/></svg>';
+function trackHTML(t,i){
+  const name=t.name.charAt(0)+t.name.slice(1).toLowerCase();
+  if(!notesOf(t)) return `<button class="empty" data-add="${t.id}"><span class="nm">Add ${name.toLowerCase()}<small>for ${t.who}</small></span><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges"><rect x="10" y="3" width="4" height="18"/><rect x="3" y="10" width="18" height="4"/></svg></button>`;
+  const o=t.options&&t.options[t.pick];
+  return `<div class="trk ${on(t.id)?'':'off'}" style="background:${t.color}">
+    <div class="row"><span class="nm">${name}<small>${t.who}</small></span>
+      <span class="ms"><button data-mute="${t.id}" aria-pressed="${!!S.mute[t.id]}" aria-label="Mute ${name}" title="Mute">M</button><button data-solo="${t.id}" aria-pressed="${S.solo===t.id}" aria-label="Solo ${name}" title="Solo">S</button></span></div>
+    ${o?`<div class="pick"><button class="arrow" data-cyc="-1" aria-label="Previous harmony">${arrowL}</button><div class="mid" aria-live="polite"><b>${o.label}</b><span>${o.desc}</span><span class="dots" aria-label="Option ${t.pick+1} of ${t.options.length}">${t.options.map((_,k)=>`<i class="${k===t.pick?'on':''}"></i>`).join('')}</span></div><button class="arrow" data-cyc="1" aria-label="Next harmony">${arrowR}</button></div>`:''}
+  </div>`;
+}
+function renderTracks(){
+  const box=document.getElementById('tracks'); box.innerHTML=project.tracks.map(trackHTML).join('');
+  const a=project.tracks[1]; document.getElementById('keep').textContent=`KEEP ${a.options[a.pick].short} FOR ${a.who.toUpperCase()}`;
+}
+function render(){renderMix();renderTracks();}
+
+document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.mute){const id=b.dataset.mute;S.mute[id]=!S.mute[id];if(S.solo===id)S.solo=null;render();}
+  else if(b.dataset.solo){const id=b.dataset.solo;S.solo=S.solo===id?null:id;render();}
+  else if(b.dataset.cyc){const t=project.tracks[1];t.pick=(t.pick+Number(b.dataset.cyc)+t.options.length)%t.options.length;render();}
+  else if(b.dataset.add){toast('NEXT: PICK A BASS LINE');}
+  else if(b.id==='keep'){toast(project.tracks[1].options[project.tracks[1].pick].label+' ON TRACK 2');}
+  else if(b.id==='play'){S.playing?stop():start();}
+});
+let tt;function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('on');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('on'),1800);}
+const spb=60/project.tempo;
+function start(){S.playing=true;S.t0=performance.now();document.getElementById('play').setAttribute('aria-pressed','true');tick();}
+function stop(){S.playing=false;cancelAnimationFrame(S.raf);document.getElementById('play').setAttribute('aria-pressed','false');setPos(0);}
+function setPos(beat){document.querySelectorAll('.ph').forEach(ph=>{ph.style.transform=`translateX(${beat/BEATS*ph.parentElement.clientWidth}px)`;});
+  document.getElementById('counter').textContent=`${String(Math.floor(beat/4)+1).padStart(2,'0')}.${Math.floor(beat%4)+1}`;}
+function tick(){const beat=(performance.now()-S.t0)/1000/spb;if(beat>=BEATS){stop();return;}setPos(beat);S.raf=requestAnimationFrame(tick);}
+render();setPos(0);addEventListener('resize',render);
+</script>
+</body>
+</html>

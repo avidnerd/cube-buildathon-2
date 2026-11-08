@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>4-Track · Practice</title>
+<link href="https://fonts.googleapis.com/css2?family=Jersey+15&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="4track.css">
+<style>
+/* Accuracy colours: DESIGN.md "The Accuracy Exception" (pitch grading only). */
+
+.vchip{display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 12px;border-radius:8px;background:var(--t2);color:var(--ink);font:400 19px var(--px)}
+.hp{display:inline-flex;align-items:center;gap:6px;font:500 13px var(--ui);color:var(--muted)}
+.hp i{width:8px;height:8px;background:var(--on)}
+.stage{height:280px;margin-top:12px}
+.stage canvas{display:block;width:100%;height:100%}
+.results{position:absolute;inset:0;padding:18px;display:none;background:var(--deep)}
+.results.on{display:block}
+.results .score{display:flex;align-items:baseline;gap:10px}
+.results .score b{font:400 64px/1 var(--px);font-weight:400}
+.results ul{list-style:none;margin-top:14px;display:grid;gap:10px}
+.results li{display:flex;gap:12px;align-items:flex-start}
+.results li i{width:10px;height:10px;margin-top:6px;flex:none}
+.results li b{display:block;font:400 21px/1.05 var(--px);font-weight:400}
+.readout{display:flex;align-items:center;gap:14px;padding:12px 20px 0}
+.cents{font:400 44px/1 var(--px);min-width:96px;font-variant-numeric:tabular-nums;transition:color .15s ease-out}
+.readout .lab{font:400 21px/1 var(--px)}
+.readout .meta{margin-top:2px}
+.loop{display:flex;gap:8px;padding:12px 20px 0}
+.loop .seg{margin:0;flex:1}
+</style>
+</head>
+<body>
+<main class="phone" aria-label="4-Track Practice mockup">
+  <div class="status" aria-hidden="true"><span>9:41</span><span class="sig">
+    <svg width="18" height="11" viewBox="0 0 18 11" fill="currentColor"><rect x="0" y="7" width="3" height="4"/><rect x="5" y="5" width="3" height="6"/><rect x="10" y="2" width="3" height="9"/><rect x="15" y="0" width="3" height="11"/></svg>
+    <svg width="25" height="12" viewBox="0 0 25 12" fill="none" stroke="currentColor"><rect x="0.5" y="0.5" width="21" height="11" rx="2"/><rect x="2.5" y="2.5" width="15" height="7" fill="currentColor" stroke="none"/><rect x="23" y="4" width="2" height="4" fill="currentColor" stroke="none"/></svg></span></div>
+  <div class="hdr"><span class="mark"><span class="stripes" aria-hidden="true"><i></i><i></i><i></i><i></i></span>4-TRACK</span><span class="hp"><i></i>Headphones on</span></div>
+  <div class="top">
+    <div class="t"><h1>Practice</h1><p class="meta">Bars 1–2 · sync 42 ms</p></div>
+    <span class="vchip">Alto · Maya</span>
+  </div>
+
+  <div class="seg" id="tol" role="group" aria-label="Tolerance">
+    <button data-tol="50" aria-pressed="true">Beginner<small>±50¢</small></button>
+    <button data-tol="25" aria-pressed="false">Middle<small>±25¢</small></button>
+    <button data-tol="10" aria-pressed="false">Pro<small>±10¢</small></button>
+  </div>
+
+  <section class="panel stage" aria-label="Target notes and your pitch">
+    <canvas id="cv"></canvas>
+    <div class="results" id="results" aria-live="polite"></div>
+  </section>
+
+  <div class="readout" aria-live="off">
+    <span class="cents" id="cents">--</span>
+    <div><div class="lab" id="lab">Ready when you are</div><p class="meta" id="hint">Your line turns lime when you're on pitch</p></div>
+  </div>
+
+  <div class="loop">
+    <button class="chip" id="loopChip" aria-pressed="true">Loop</button>
+    <div class="seg" id="speed" role="group" aria-label="Speed">
+      <button data-sp="0.5" aria-pressed="false">50%</button>
+      <button data-sp="0.75" aria-pressed="false">75%</button>
+      <button data-sp="1" aria-pressed="true">100%</button>
+    </div>
+  </div>
+
+  <button class="cta" id="cta">START TAKE</button>
+
+  <nav class="tabbar" aria-label="Main">
+    <a href="record.html"><svg viewBox="0 0 22 22" fill="currentColor" shape-rendering="crispEdges"><rect x="7" y="2" width="8" height="12"/><rect x="4" y="10" width="2" height="4"/><rect x="16" y="10" width="2" height="4"/><rect x="5" y="14" width="12" height="2"/><rect x="10" y="16" width="2" height="3"/><rect x="7" y="19" width="8" height="2"/></svg>Record</a>
+    <a href="harmony-options.html"><svg viewBox="0 0 22 22" fill="currentColor" shape-rendering="crispEdges"><rect x="2" y="4" width="18" height="3"/><rect x="2" y="9" width="12" height="3"/><rect x="2" y="14" width="15" height="3"/></svg>Arrange</a>
+    <a href="parts.html"><svg viewBox="0 0 22 22" fill="currentColor" shape-rendering="crispEdges"><rect x="3" y="3" width="2" height="16"/><rect x="10" y="3" width="2" height="16"/><rect x="17" y="3" width="2" height="16"/><rect x="1" y="12" width="6" height="3"/><rect x="8" y="6" width="6" height="3"/><rect x="15" y="10" width="6" height="3"/></svg>Parts</a>
+    <a href="practice.html" aria-current="page"><svg viewBox="0 0 22 22" fill="currentColor" shape-rendering="crispEdges"><rect x="2" y="13" width="3" height="3"/><rect x="5" y="10" width="3" height="3"/><rect x="8" y="12" width="3" height="3"/><rect x="11" y="7" width="3" height="3"/><rect x="14" y="9" width="3" height="3"/><rect x="17" y="5" width="3" height="3"/></svg>Practice</a>
+  </nav>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+/* Alto targets (MIDI, beats) — sample data in the shape of docs/SPEC.md's note model. */
+const T=[[59,0,1],[64,1,1],[64,2,.5],[66,2.5,.5],[67,3,1],[66,4,1],[64,5,1],[60,6,1],[59,7,1]];
+const BEATS=8,BPM=92,PX=64,PLAY=96,HI=69,LO=56;
+let tol=50,speed=1,run=false,t0=0,raf=0,samples=[];
+const cv=$('cv'),ctx=cv.getContext('2d');
+function size(){const r=cv.getBoundingClientRect(),d=devicePixelRatio||1;cv.width=r.width*d;cv.height=r.height*d;ctx.setTransform(d,0,0,d,0,0);}
+const yOf=(p,h)=>14+(HI-p)/(HI-LO)*(h-28);
+
+/* Simulated singer: scoops into each note, drifts flat on long notes, a bit sharp up high, slowly flattens. */
+function sung(beat){
+  const n=T.find(([,s,d])=>beat>=s&&beat<s+d); if(!n) return null;
+  const [p,s,d]=n, into=(beat-s)*60/BPM;           // seconds into the note
+  let c=-70*Math.exp(-into/0.07);                    // scoop
+  if(d>=1) c+=-48*Math.min(1,(beat-s)/d);            // long-note sag
+  if(p>=67) c+=58;                                   // sharp on the high note
+  c+=-4*beat + 8*Math.sin(beat*9);                   // drift + vibrato
+  return {p,c,into,d};
+}
+const grade=c=>Math.abs(c)<=tol?'on':Math.abs(c)<=tol*2?'near':'off';
+const words={on:'On pitch',near:'Close',off:'Off'};
+
+function draw(beat){
+  const w=cv.clientWidth,h=cv.clientHeight; ctx.clearRect(0,0,w,h);
+  // beat lines
+  ctx.fillStyle='rgba(255,255,255,.035)';
+  for(let b=Math.floor(beat-2);b<beat+6;b++){const x=PLAY+(b-beat)*PX;ctx.fillRect(x,0,1,h);}
+  // target bars (neutral, hollow)
+  T.forEach(([p,s,d])=>{const x=PLAY+(s-beat)*PX,y=yOf(p,h);if(x>w||x+d*PX<0)return;
+    ctx.fillStyle='rgba(244,239,230,.10)';ctx.fillRect(x+1,y-6,d*PX-3,12);ctx.fillStyle='rgba(244,239,230,.55)';ctx.fillRect(x+1,y+4,d*PX-3,2);});
+  // sung line
+  const col={on:css('--on'),near:css('--near'),off:css('--off')};
+  ctx.lineWidth=4;ctx.lineCap='square';
+  for(let i=1;i<samples.length;i++){const a=samples[i-1],b=samples[i];if(b.b-a.b>.1)continue;
+    const xa=PLAY+(a.b-beat)*PX,xb=PLAY+(b.b-beat)*PX;if(xb<0)continue;
+    ctx.strokeStyle=col[b.g];ctx.beginPath();ctx.moveTo(xa,yOf(a.p+a.c/100,h));ctx.lineTo(xb,yOf(b.p+b.c/100,h));ctx.stroke();}
+  // playhead
+  ctx.fillStyle=css('--text');ctx.fillRect(PLAY-1,0,2,h);
+  const last=samples[samples.length-1]; if(run&&last){ctx.fillStyle=col[last.g];ctx.fillRect(PLAY-6,yOf(last.p+last.c/100,h)-6,12,12);}
+}
+function tick(){
+  const beat=(performance.now()-t0)/1000*(BPM/60)*speed;
+  if(beat>=BEATS){finish();return;}
+  const s=sung(beat);
+  if(s){const g=grade(s.c);samples.push({b:beat,p:s.p,c:s.c,g,into:s.into,d:s.d});
+    $('cents').textContent=(s.c>0?'+':'')+Math.round(s.c)+'¢';$('cents').style.color=css('--'+g);
+    $('lab').textContent=words[g]+(g!=='on'?(s.c>0?' · sharp':' · flat'):'');}
+  draw(beat);raf=requestAnimationFrame(tick);
+}
+function start(){samples=[];run=true;$('results').classList.remove('on');t0=performance.now();$('cta').textContent='STOP';$('hint').textContent='The first 0.1 s of each note is not scored';tick();}
+function finish(){
+  run=false;cancelAnimationFrame(raf);$('cta').textContent='TRY AGAIN';
+  const scored=samples.filter(s=>s.into>0.1);
+  const pct=Math.round(100*scored.filter(s=>s.g==='on').length/Math.max(1,scored.length));
+  const avg=a=>a.length?a.reduce((x,s)=>x+s.c,0)/a.length:0;
+  const longN=avg(scored.filter(s=>s.d>=1)),high=avg(scored.filter(s=>s.p>=67));
+  const first=avg(scored.filter(s=>s.b<2)),lastQ=avg(scored.filter(s=>s.b>=6));
+  const habits=[];
+  if(longN<-tol/2) habits.push(['Flat on long notes',`About ${Math.round(-longN)}¢ under. Support the end of each held note.`,'off']);
+  if(high>tol/2) habits.push(['Sharp on high notes',`About ${Math.round(high)}¢ over on G4. Lighten up at the top.`,'near']);
+  if(lastQ-first<-8) habits.push(['Drifting flat',`${Math.round(first-lastQ)}¢ lower by the end than the start.`,'near']);
+  if(!habits.length) habits.push(['Nice and steady','No habits stood out this take.','on']);
+  $('results').innerHTML=`<div class="score"><b>${pct}%</b><span class="meta">on pitch at ${tol===50?'Beginner':tol===25?'Middle':'Pro'} · ${Math.round(speed*100)}% speed</span></div>
+    <ul>${habits.map(([t,d,g])=>`<li><i style="background:var(--${g})"></i><div><b>${t}</b><span class="meta">${d}</span></div></li>`).join('')}</ul>`;
+  $('results').classList.add('on');$('cents').textContent='';$('cents').style.color='';$('lab').textContent='Take scored';$('hint').textContent='Loop it slower to fix one habit at a time';
+}
+document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.tol){tol=+b.dataset.tol;document.querySelectorAll('#tol button').forEach(x=>x.setAttribute('aria-pressed',x===b));samples.forEach(s=>s.g=grade(s.c));if(!run)draw(0);}
+  else if(b.dataset.sp){speed=+b.dataset.sp;document.querySelectorAll('#speed button').forEach(x=>x.setAttribute('aria-pressed',x===b));}
+  else if(b.id==='loopChip'){b.setAttribute('aria-pressed',b.getAttribute('aria-pressed')!=='true');}
+  else if(b.id==='cta'){run?finish():start();}
+});
+size();draw(0);addEventListener('resize',()=>{size();draw(0);});
+</script>
+</body>
+</html>
