@@ -387,9 +387,13 @@ def api_render(req: dict) -> bytes:
         raise ValueError("melody and part must have the same notes")
     key = (req["job"], tuple((round(m["t0"], 3), m["pitch"], h["pitch"]) for m, h in zip(melody, part)))
     if key not in _render_cache:
+        from backend.harmony.audio_fx import denoise, polish
+
         vocals, sr = job["audio"]["vocals"]
+        if "vocals_clean" not in job:  # once per song: room hiss out before shifting
+            job["vocals_clean"] = denoise(vocals, sr)
         times, hz = job["f0"]
-        y = render_part(vocals, sr, times, hz, melody, part)
+        y = polish(render_part(job["vocals_clean"], sr, times, hz, melody, part), sr)
         if len(_render_cache) > 64:
             _render_cache.clear()
         _render_cache[key] = wav_bytes(y.astype(np.float32), sr)

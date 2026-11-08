@@ -422,7 +422,44 @@ def plan_parts(melody, chord_at, key, voice, arrangement: str = "classic",
     out: dict[str, list[dict]] = {}
     for pid, _, side, target in arr["parts"]:  # later parts fill in around earlier ones
         others = [[h["pitch"] for h in part] for part in out.values()]
-        out[pid] = plan_part(melody, chord_at, key, voice, side, target, scene_for, others, weights, personal)
+        out[pid] = mirror_runs(melody, plan_part(melody, chord_at, key, voice, side, target, scene_for, others, weights, personal))
+    return out
+
+
+RUN_NOTE_S = 0.2    # notes shorter than this, joined to a neighbour, are embellishments
+RUN_JOIN_S = 0.06
+
+
+def mirror_runs(melody: Sequence[dict], part: list[dict]) -> list[dict]:
+    """Embellishments get the interval of the note they decorate.
+
+    A singer's quick run or grace notes shouldn't each get their own harmony
+    choice: the backing voice mirrors the run at one interval (as real backing
+    singers do), which also keeps the pitch shifter from jumping mid-run.
+    """
+    n = len(melody)
+    if n < 2:
+        return part
+    dur = [m["t1"] - m["t0"] for m in melody]
+    joined = [False] + [melody[k]["t0"] - melody[k - 1]["t1"] < RUN_JOIN_S for k in range(1, n)]
+    out = [dict(h) for h in part]
+    k = 0
+    while k < n:
+        if dur[k] >= RUN_NOTE_S:
+            k += 1
+            continue
+        # the run: consecutive quick notes joined together
+        j = k
+        while j + 1 < n and dur[j + 1] < RUN_NOTE_S and joined[j + 1]:
+            j += 1
+        anchors = [a for a in (k - 1 if k > 0 and joined[k] else None, j + 1 if j + 1 < n and joined[j + 1] else None)
+                   if a is not None]
+        if anchors:
+            a = max(anchors, key=lambda q: dur[q])  # the held note the run belongs to
+            shift = part[a]["pitch"] - melody[a]["pitch"]
+            for q in range(k, j + 1):
+                out[q]["pitch"] = int(melody[q]["pitch"] + shift)
+        k = j + 1
     return out
 
 
@@ -544,7 +581,7 @@ def save_style(w: dict[str, float], note: str = "") -> None:
 # Rendering in the lead's voice: TD-PSOLA
 # ---------------------------------------------------------------------------
 
-GLIDE_S = 0.04
+GLIDE_S = 0.08
 UNVOICED_STEP_S = 0.008
 
 
@@ -566,6 +603,47 @@ def shift_curve(melody: Sequence[dict], part: Sequence[dict]) -> tuple[np.ndarra
     return np.array(kt), np.array(ks)
 
 
+def smooth_f0(hz: np.ndarray) -> np.ndarray:
+    """Pitch track for grain placement: octave slips folded back, short voicing
+    gaps bridged, cycle-to-cycle jitter smoothed; vibrato (5-7 Hz) survives."""
+    f = np.asarray(hz, dtype=float).copy()
+    v = ~np.isnan(f)
+    if v.sum() < 3:
+        return f
+    lg = np.full_like(f, np.nan)
+    lg[v] = np.log2(f[v])
+    # octave slips: a frame an octave away from the local median comes back
+    idx = np.flatnonzero(v)
+    for k, i in enumerate(idx):
+        win = lg[idx[max(0, k - 5): k + 6]]
+        med = np.median(win)
+        d = lg[i] - med
+        if abs(d) > 0.75:
+            lg[i] -= np.round(d)
+    # bridge gaps of <= 4 frames (40 ms) inside a voiced stretch
+    i = 0
+    while i < len(lg):
+        if np.isnan(lg[i]):
+            j = i
+            while j < len(lg) and np.isnan(lg[j]):
+                j += 1
+            if 0 < i and j < len(lg) and j - i <= 4:
+                lg[i:j] = np.linspace(lg[i - 1], lg[j], j - i + 2)[1:-1]
+            i = j
+        else:
+            i += 1
+    # 3-frame median then 3-frame mean (30 ms): kills jitter, keeps vibrato
+    out = lg.copy()
+    for i in np.flatnonzero(~np.isnan(lg)):
+        w = lg[max(0, i - 1): i + 2]
+        out[i] = np.median(w[~np.isnan(w)])
+    sm = out.copy()
+    for i in np.flatnonzero(~np.isnan(out)):
+        w = out[max(0, i - 1): i + 2]
+        sm[i] = np.mean(w[~np.isnan(w)])
+    return 2.0 ** sm
+
+
 @lru_cache(maxsize=64)
 def _hann(n: int) -> np.ndarray:
     return np.hanning(max(n, 3))
@@ -580,6 +658,7 @@ def psola(x: np.ndarray, sr: int, f0_times: np.ndarray, f0_hz: np.ndarray,
     """
     x = np.asarray(x, dtype=np.float64)
     n = len(x)
+    f0_hz = smooth_f0(f0_hz)
     voiced_t = ~np.isnan(f0_hz)
     if not voiced_t.any():
         return x.copy()
@@ -597,8 +676,15 @@ def psola(x: np.ndarray, sr: int, f0_times: np.ndarray, f0_hz: np.ndarray,
         w = (t - f0_times[lo]) / (f0_times[hi] - f0_times[lo])
         return float(a + w * (b - a))
 
-    # 1. Analysis marks: one per glottal cycle in voiced regions (snapped to
-    #    waveform peaks so grains stay pitch-synchronous), fixed steps elsewhere.
+    # 1. Analysis marks: one per glottal cycle in voiced regions, fixed steps
+    #    elsewhere. Peaks are found on a low-passed copy: breathy highs and
+    #    formant ripples create false peaks that make the cuts jump around
+    #    (phase noise = grainy, crackly texture).
+    from scipy.signal import butter, sosfiltfilt
+
+    f0v = f0_hz[~np.isnan(f0_hz)]
+    cut = float(np.clip(1.3 * np.percentile(f0v, 90), 300.0, 1200.0)) if f0v.size else 800.0
+    xl = sosfiltfilt(butter(4, cut, fs=sr, output="sos"), x)
     marks, periods, voiced = [], [], []
     pos = 0.0
     unv = UNVOICED_STEP_S * sr
@@ -608,11 +694,11 @@ def psola(x: np.ndarray, sr: int, f0_times: np.ndarray, f0_hz: np.ndarray,
             T = sr / f
             a, b = int(pos), int(min(n, pos + T))
             if not marks or not voiced[-1]:
-                p = a + int(np.argmax(x[a:b])) if b > a else a
+                p = a + int(np.argmax(xl[a:b])) if b > a else a
             else:
                 c = marks[-1] + T
                 lo, hi = int(max(0, c - T / 4)), int(min(n, c + T / 4 + 1))
-                p = lo + int(np.argmax(x[lo:hi])) if hi > lo else int(c)
+                p = lo + int(np.argmax(xl[lo:hi])) if hi > lo else int(c)
             if marks and p <= marks[-1]:
                 p = int(marks[-1] + max(1, T / 2))
             marks.append(p); periods.append(T); voiced.append(True)
@@ -634,8 +720,11 @@ def psola(x: np.ndarray, sr: int, f0_times: np.ndarray, f0_hz: np.ndarray,
         ta, T, v = int(marks_a[j]), periods[j], voiced[j]
         if v:
             r = 2.0 ** (float(np.interp(ts / sr, shift_t, shift_s)) / 12.0)
-            L = int(T)
             step = T / r
+            # Grain = two periods of whichever is longer, analysis or synthesis:
+            # lowering pitch then still overlaps grains by half, so they sum
+            # smoothly instead of leaving dips between cycles.
+            L = int(max(T, step))
         else:
             L = int(unv)
             step = unv
@@ -648,8 +737,11 @@ def psola(x: np.ndarray, sr: int, f0_times: np.ndarray, f0_hz: np.ndarray,
             y[s0 + lo: s0 + hi] += x[a0 + lo: a0 + hi] * w
             wsum[s0 + lo: s0 + hi] += w
         ts += max(step, 1.0)
+    # Only undo pile-up where grains overlap by more than one (raising pitch).
+    # Lowering pitch leaves real gaps between glottal pulses; dividing by the
+    # small window sum there would amplify grain edges into buzz and hiss.
     ok = wsum > 0.05
-    y[ok] /= wsum[ok]
+    y[ok] /= np.maximum(wsum[ok], 0.5)  # windows now sum to ~1; only tame pile-up and tiny edges
     y[~ok] = 0.0
     return y
 

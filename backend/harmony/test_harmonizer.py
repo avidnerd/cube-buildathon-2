@@ -194,3 +194,37 @@ def test_classic_arrangement_spells_chords_not_octaves():
     parts = plan_parts(mel, C_CHORD, (0, "major"), VOICE, "classic")
     doubled = sum(h["pitch"] % 12 == l["pitch"] % 12 for h, l in zip(parts["high"], parts["low"]))
     assert doubled <= 1
+
+
+def test_runs_mirror_the_note_they_decorate():
+    from backend.harmony.harmonizer import mirror_runs
+    # held E, then a quick run D-C-D, then held E: the run takes the held notes' interval
+    mel = [{"pitch": 64, "t0": 0.0, "t1": 0.6}, {"pitch": 62, "t0": 0.6, "t1": 0.7},
+           {"pitch": 60, "t0": 0.7, "t1": 0.8}, {"pitch": 62, "t0": 0.8, "t1": 0.9}, {"pitch": 64, "t0": 0.9, "t1": 1.6}]
+    part = [{"pitch": p} for p in (67, 65, 64, 65, 67)]            # planner's note-by-note choices
+    out = mirror_runs(mel, part)
+    assert [h["pitch"] - m["pitch"] for h, m in zip(out, mel)] == [3, 3, 3, 3, 3]
+
+
+def test_lowering_pitch_has_no_gaps_between_cycles():
+    """Shifting down used to leave dips between grains (buzz); grains now overlap by half."""
+    x = tone(220.0, 1.0)
+    times, f0 = _f0_track(x, SR)
+    y = psola(x, SR, times, f0, np.array([0.0, 2.0]), np.array([-9.0, -9.0]))
+    seg = y[int(0.3 * SR): int(0.7 * SR)]
+    env = np.sqrt(np.convolve(seg ** 2, np.ones(64) / 64, mode="valid"))
+    assert env.min() > 0.25 * env.max()
+
+
+def test_denoise_and_polish_keep_the_voice():
+    from backend.harmony.audio_fx import denoise, polish
+    rng = np.random.default_rng(0)
+    clean = np.concatenate([np.zeros(SR // 2), tone(220.0, 1.0), np.zeros(SR // 2)])
+    noisy = clean + 0.02 * rng.standard_normal(len(clean))
+    d = denoise(noisy, SR)
+    quiet = slice(0, SR // 3)
+    assert np.std(d[quiet]) < 0.5 * np.std(noisy[quiet])                  # hiss removed between phrases
+    mid = slice(int(0.8 * SR), int(1.2 * SR))
+    assert np.corrcoef(d[mid], clean[mid])[0, 1] > 0.95                  # the voice is untouched
+    p = polish(d, SR)
+    assert len(p) == len(d) and np.max(np.abs(p)) <= np.max(np.abs(d)) + 1e-9
