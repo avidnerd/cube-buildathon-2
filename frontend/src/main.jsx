@@ -16,7 +16,11 @@ import './app.css';
 
 const SCREENS = ['record', 'split', 'arrange', 'parts', 'practice', 'karaoke'];
 const MIX_KEY = '4track.mix.v1';
-const screenFromHash = () => (SCREENS.includes(location.hash.slice(1)) ? location.hash.slice(1) : null);
+const screenFromHash = () => {
+  const hash = location.hash.slice(1);
+  if (hash === 'new') return 'record'; // the logo: start a new take
+  return SCREENS.includes(hash) ? hash : null;
+};
 
 /** Each listener's mix lives on their own device (spec 1.2). */
 function loadMix() {
@@ -51,6 +55,7 @@ function App() {
   const [shareState, setShareState] = useState(opensShare ? 'loading' : null); // loading | ready | error text
   const [screen, setScreen] = useState(() => (opensShare ? 'karaoke' : screenFromHash() || (project.tracks.length ? 'arrange' : 'record')));
   const [takes, setTakes] = useState([]);
+  const [blankTake, setBlankTake] = useState(false);
   const [mix, setMix] = useState(loadMix);
   const playback = usePlayback();
   const [toast, showToast] = useToast();
@@ -82,7 +87,15 @@ function App() {
   }, [basis]);
   useEffect(() => { try { localStorage.setItem(MIX_KEY, JSON.stringify(mix)); } catch { /* private mode */ } }, [mix]);
   useEffect(() => {
-    const onHash = () => { const s = screenFromHash(); if (s) setScreen(s); };
+    const onHash = () => {
+      if (location.hash === '#new') {
+        if (opensShare) { location.href = '/#new'; return; } // a friend starts their own song
+        history.replaceState(null, '', '#record');
+        setBlankTake(true);
+      }
+      const s = screenFromHash();
+      if (s) setScreen(s);
+    };
     addEventListener('hashchange', onHash);
     return () => removeEventListener('hashchange', onHash);
   }, []);
@@ -95,7 +108,7 @@ function App() {
       <p className="meta">{shareState === 'loading' ? 'Getting everyone’s parts.' : shareState}</p></div>
   </main>;
   return <main className="phone" aria-label="4-Track">
-    {screen === 'record' && <RecordScreen {...shared} takes={takes} setTakes={setTakes}/>}
+    {screen === 'record' && <RecordScreen {...shared} takes={takes} setTakes={setTakes} blankTake={blankTake} clearBlankTake={() => setBlankTake(false)}/>}
     {screen === 'split' && <SplitScreen {...shared}/>}
     {screen === 'karaoke' && <KaraokeScreen {...shared}/>}
     {screen === 'arrange' && <ArrangeScreen {...shared}/>}

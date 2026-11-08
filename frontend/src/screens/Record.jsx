@@ -1,6 +1,6 @@
 // Record (design/record.html): sing freely (tempo, time signature and key are
 // guessed afterwards) or with a count-in; live trace, takes, transcription.
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useRecorder } from '../useRecorder.js';
 import { analyzeMelody } from '../analyzeMelody.js';
 import { notesEnd, notesFromSeconds } from '../noteModel.js';
@@ -11,12 +11,13 @@ const METERS = ['4/4', '3/4', '6/8'];
 // SAMPLE DATA: a short demo phrase (MIDI pitch, beats) for when live recording isn't possible.
 const DEMO = [[62, 0, 1], [67, 1, 1], [67, 2, 0.5], [69, 2.5, 0.5], [71, 3, 1], [69, 4, 1], [67, 5, 1], [64, 6, 1], [62, 7, 2]];
 
-export function RecordScreen({ project, setProject, takes, setTakes, showToast, go }) {
+export function RecordScreen({ project, setProject, takes, setTakes, showToast, go, blankTake, clearBlankTake }) {
   const [bpm, setBpm] = useState(project.tempo);
   const [meter, setMeter] = useState(project.timeSignature);
   const [countIn, setCountIn] = useState(false);
   const [clickOn, setClickOn] = useState(false);
   const [selected, setSelected] = useState(takes.length - 1);
+  useEffect(() => { if (blankTake) { setSelected(-1); clearBlankTake(); } }, [blankTake]);
   const bar = beatsPerBar(meter);
   const fileInput = useRef(null);
 

@@ -21,7 +21,7 @@ export const Icon = {
 
 export function Header({ children }) {
   return <div className="hdr">
-    <span className="mark"><span className="stripes" aria-hidden="true"><i/><i/><i/><i/></span>4-TRACK</span>
+    <a className="mark" href="#new" title="Record a new take" aria-label="4-Track: record a new take"><img src="/logo.png" alt=""/></a>
     <span className="right">{children}</span>
   </div>;
 }
