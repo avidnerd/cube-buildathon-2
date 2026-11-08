@@ -252,9 +252,10 @@
       <div class="row">
         <span class="muted" id="editCount"></span>
         <button id="resetEdits">Reset</button>
-        <button class="primary" id="sendEdits">Send my fixes to Claude</button>
+        <button class="primary" id="sendEdits">Teach it my fixes</button>
       </div>
     </div>
+    <p class="muted" style="margin:0 0 4px"><span id="styleNote"></span> <button class="chip hidden" id="resetStyle">reset to default</button></p>
     <p class="muted" style="margin:0 0 10px">Showing <b id="notesWhich"></b>. Change any harmony note, press ▶ to hear that line with your change.
       Your fixes are what the algorithm learns from.</p>
     <div id="notesBody"></div>
@@ -786,10 +787,26 @@ async function sendEdits() {
     if (orig !== h.pitch) changes.push({ part: pid, index: i, t0: h.t0, lyric: S.res.notes[i].lyric, lead: S.res.notes[i].pitch, algorithm: orig, yours: h.pitch });
   });
   const body = { option: path.name, arrangement: S.arr, key: path.key, chords: path.chords, beats: S.res.beats,
-                 notes: S.res.notes, parts, changes };
+                 notes: S.res.notes, lines: S.res.lines, parts, changes };
+  $("editCount").textContent = "learning…";
   const r = await fetch("/api/feedback", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   const j = await r.json();
-  $("editCount").textContent = r.ok ? `sent ${changes.length} fix${changes.length === 1 ? "" : "es"} ✓  (tell Claude in chat)` : j.error;
+  if (!r.ok) { $("editCount").textContent = j.error; return; }
+  const L = j.learned || {};
+  await fetchOptions();   // re-harmonize with the updated style
+  await refreshStyle();
+  $("editCount").textContent = L.notes
+    ? `learned from ${L.notes} notes: matches your fixes ${Math.round(100 * L.before)}% → ${Math.round(100 * L.after)}%. Harmony updated.`
+    : `saved ${changes.length} fix${changes.length === 1 ? "" : "es"}`;
+}
+async function refreshStyle() {
+  const j = await (await fetch("/api/style")).json();
+  $("styleNote").textContent = j.learned ? `Style: ${j.note}` : "Style: default";
+  show("resetStyle", j.learned);
+}
+async function resetStyle() {
+  await fetch("/api/style/reset", { method: "POST" });
+  await refreshStyle(); await fetchOptions();
 }
 
 // ------------------------------------------------------------------ karaoke
@@ -1054,6 +1071,8 @@ async function init() {
   $("lyricsApply").onclick = applyLyrics;
   $("resetEdits").onclick = resetEdits;
   $("sendEdits").onclick = sendEdits;
+  $("resetStyle").onclick = resetStyle;
+  refreshStyle();
 
   for (const k of Object.keys(meta.lenses)) {
     if (k === "density") continue;

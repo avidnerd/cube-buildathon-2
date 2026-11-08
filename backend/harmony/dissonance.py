@@ -43,6 +43,7 @@ class Scene:
     amps: np.ndarray
     chroma: np.ndarray   # (12,) measured pitch-class energy (accompaniment + lead)
     lead_hz: float       # the lead's actual sung pitch (Hz)
+    measured: bool = True  # False when the "band" is a guessed chord, not real audio
 
 
 def partials(f0: np.ndarray | float, amp: float = 1.0) -> tuple[np.ndarray, np.ndarray]:
@@ -150,4 +151,4 @@ def chord_scene(chord_tones, melody_midi: int, lead_hz: float | None = None) -> 
     fs.append(lf)
     as_.append(la)
     chroma[melody_midi % 12] += 1.0
-    return Scene(np.concatenate(fs), np.concatenate(as_), chroma, lead)
+    return Scene(np.concatenate(fs), np.concatenate(as_), chroma, lead, measured=False)

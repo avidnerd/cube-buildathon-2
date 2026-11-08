@@ -165,3 +165,32 @@ def test_never_a_tritone_against_a_held_lead_note():
     for side, target in ((+1, 3.5), (-1, 8.5)):
         part = plan_part(mel, lambda t: parse_chord("Eb"), (10, "major"), VOICE, side, target)
         assert all(abs(h["pitch"] - m["pitch"]) % 12 not in (1, 2, 6, 10, 11) for h, m in zip(part, mel))
+
+
+def test_style_learns_from_corrections_and_generalizes():
+    """Teach 'join the melody on low pickups, then diatonic 3rds' on two phrases;
+    it should then do that on a phrase it hasn't seen."""
+    from backend.harmony.harmonizer import DEFAULT_WEIGHTS, agreement, fit_style, make_example
+
+    sc = (0, 2, 4, 5, 7, 9, 11)
+    def third_above(p):
+        up = [q for q in range(p + 1, p + 6) if q % 12 in sc]
+        return up[1]
+    def phrase(pitches, start):
+        mel = [{"pitch": p, "t0": start + 0.5 * i, "t1": start + 0.5 * i + 0.45} for i, p in enumerate(pitches)]
+        gold = [p if i < 2 else third_above(p) for i, p in enumerate(pitches)]  # unison pickup, then 3rds
+        return mel, gold
+    chord = lambda t: parse_chord("C")
+    exs = [make_example(*(lambda m, g: (m, chord, (0, "major"), VOICE, +1, 3.5, g))(*phrase(ps, s)))
+           for ps, s in (([55, 57, 60, 62, 64, 62, 60], 0), ([55, 57, 64, 65, 67, 65, 64], 5))]
+    test = make_example(*(lambda m, g: (m, chord, (0, "major"), VOICE, +1, 3.5, g))(*phrase([55, 57, 62, 64, 65, 64, 62], 10)))
+    w = fit_style(exs)
+    assert agreement([test], w) > agreement([test], DEFAULT_WEIGHTS)
+    assert agreement([test], w) >= 0.7  # from just two short phrases
+
+
+def test_classic_arrangement_spells_chords_not_octaves():
+    mel = melody_notes([64, 65, 67, 69, 67, 65, 64], dur=0.6)
+    parts = plan_parts(mel, C_CHORD, (0, "major"), VOICE, "classic")
+    doubled = sum(h["pitch"] % 12 == l["pitch"] % 12 for h, l in zip(parts["high"], parts["low"]))
+    assert doubled <= 1

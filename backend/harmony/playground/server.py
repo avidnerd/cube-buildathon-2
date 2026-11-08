@@ -306,6 +306,20 @@ def _studio_payload(paths, names, melody, beats, voice: dict, job_id: str | None
                 return chord_scene(tones, int(n["pitch"]), _lead_hz(f0, n))
             d["backing"] = "pad"
         d["parts"] = {arr: plan_parts(timed, chord_at, p.key, rng, arr, scene_for) for arr in ARRANGEMENTS}
+        if listener is None and name == "Plain" and beats:
+            # A cappella: the chords were only a guess; the voices now spell the
+            # real ones. Re-label (and re-voice the pad) so nothing contradicts.
+            from backend.harmony.harmonizer import implied_chords
+            from backend.harmony.reharmonize import Reharmonization
+
+            cl = d["parts"]["classic"]
+            chords = implied_chords(timed, [cl["high"], cl["low"]], beats, len(p.chords), p.key, p.chords)
+            q = Reharmonization(chords, p.score, p.beat_len, [], p.original, p.key).to_dict()
+            for k in ("chords", "romans", "timeline"):
+                d[k] = q[k]
+            for seg in d["timeline"]:
+                seg["voicing"] = _voicing(seg["symbol"])
+            p = Reharmonization(chords, p.score, p.beat_len, [], p.original, p.key)
         d["tension"] = round(progression_tension(p.chords, *p.key), 3)
         out.append(d)
     return out
@@ -381,8 +395,65 @@ def api_render(req: dict) -> bytes:
 FEEDBACK_DIR = HERE.parents[2] / "listen"
 
 
+def _examples_from_feedback(fb: dict) -> list:
+    """Training examples from one feedback file: every lyric line the user
+    touched (or all lines, for a fully labelled example), per labelled part."""
+    from backend.harmony.harmonizer import ARRANGEMENTS as ARR, make_example
+    from backend.harmony.reharmonize import NOTE_NAMES
+
+    notes, parts = fb["notes"], fb["parts"]
+    arr = ARR[fb.get("arrangement", "classic")]
+    key = (NOTE_NAMES.index(fb["key"]["tonic"]), fb["key"]["mode"])
+    chord_at = _chord_at_fn(fb["chords"], fb["beats"])
+    lo = min(n["pitch"] for n in notes)
+    hi = max(n["pitch"] for n in notes)
+    voice = (lo - 5, hi + 5, lo - 3, hi + 3)
+    labelled = fb.get("labelled_parts") or list(parts)
+    changed_idx = {c["index"] for c in fb.get("changes", [])}
+    lines = fb.get("lines") or [{"notes": list(range(len(notes)))}]
+    if not fb.get("fully_labelled"):
+        lines = [ln for ln in lines if changed_idx & set(ln["notes"])]
+
+    def scene_for(n):
+        ch = chord_at(0.5 * (n["t0"] + n["t1"]))
+        return chord_scene(list(ch.tones) if ch is not None else [], int(n["pitch"]))
+
+    out = []
+    done: dict[str, list[int]] = {}
+    for pid, _, side, target in arr["parts"]:
+        if pid in labelled:
+            for ln in lines:
+                idx = ln["notes"]
+                mel = [notes[i] for i in idx]
+                gold = [int(parts[pid][i]["pitch"]) for i in idx]
+                others = [[v[i] for i in idx] for v in done.values()]
+                out.append(make_example(mel, chord_at, key, voice, side, target, gold, scene_for, others))
+        done[pid] = [int(h["pitch"]) for h in parts[pid]]
+    return out
+
+
+def learn_style() -> dict:
+    """Refit the harmony style from every feedback file the user has sent."""
+    from backend.harmony.harmonizer import DEFAULT_WEIGHTS, agreement, fit_style, save_style
+
+    files = sorted(p for p in FEEDBACK_DIR.glob("feedback-*.json") if p.name != "feedback-latest.json")
+    examples = []
+    for f in files:
+        try:
+            examples += _examples_from_feedback(json.loads(f.read_text()))
+        except (KeyError, ValueError, IndexError) as e:
+            sys.stderr.write(f"skipping {f.name}: {e}\n")
+    if not examples:
+        return {"examples": 0}
+    before = agreement(examples, DEFAULT_WEIGHTS)
+    w = fit_style(examples)
+    n_notes = sum(len(e.gold) for e in examples)
+    save_style(w, note=f"learned from {len(files)} feedback file(s), {n_notes} labelled notes")
+    return {"examples": len(examples), "notes": n_notes, "before": round(before, 3), "after": round(agreement(examples, w), 3)}
+
+
 def api_feedback(req: dict) -> dict:
-    """Save the user's hand-corrected harmony so the algorithm can be tuned to it."""
+    """Save the user's hand-corrected harmony, then relearn the style from all of it."""
     import time
 
     FEEDBACK_DIR.mkdir(exist_ok=True)
@@ -390,7 +461,17 @@ def api_feedback(req: dict) -> dict:
     data = json.dumps(req, indent=1)
     (FEEDBACK_DIR / f"feedback-{stamp}.json").write_text(data)
     (FEEDBACK_DIR / "feedback-latest.json").write_text(data)
-    return {"saved": f"listen/feedback-{stamp}.json", "changes": len(req.get("changes", []))}
+    return {"saved": f"listen/feedback-{stamp}.json", "changes": len(req.get("changes", [])), "learned": learn_style()}
+
+
+def api_style(reset: bool = False) -> dict:
+    from backend.harmony.harmonizer import STYLE_PATH
+
+    if reset and STYLE_PATH.exists():
+        STYLE_PATH.unlink()
+    if STYLE_PATH.exists():
+        return {"learned": True, "note": json.loads(STYLE_PATH.read_text()).get("note", "")}
+    return {"learned": False, "note": "default style"}
 
 
 def api_lyrics(req: dict) -> dict:
@@ -439,6 +520,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path in PAGES:
                 self._send(200, (HERE / PAGES[path]).read_bytes(), "text/html; charset=utf-8")
+            elif path == "/api/style":
+                self._json(200, api_style())
             elif path == "/api/meta":
                 self._json(200, {"lenses": LENSES, "styles": HARMONY_STYLES})
             elif len(parts) == 3 and parts[:2] == ["api", "job"]:
@@ -465,6 +548,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(200, api_options(json.loads(body or b"{}")))
             elif url.path == "/api/render":
                 self._send(200, api_render(json.loads(body or b"{}")), "audio/wav")
+            elif url.path == "/api/style/reset":
+                self._json(200, api_style(reset=True))
             elif url.path == "/api/feedback":
                 self._json(200, api_feedback(json.loads(body or b"{}")))
             elif url.path == "/api/lyrics":
