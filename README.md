@@ -1,18 +1,24 @@
-# Running the full app (sing → sheet music → counter-melody)
+# 4-Track: running the app
 
 ```
 npm install
-npm start        # starts the Python API (counter_api.py, port 8001) and Vite together
+npm start        # the web app (Vite) and the Python counter-melody API (port 8001) together
 ```
 
-Open the Vite URL, sing (or press **Load example**), then press **Add counter-melody** under "03 / Counter-melody" and pick a voice. The score switches to two staves: your melody plus the generated line.
+Open the Vite URL on a phone-sized window (the UI is designed iPhone-first).
+
+| Screen | What works | Not built yet |
+|---|---|---|
+| **Record** | Sing freely: tempo, time signature and key are guessed after you stop (as in the original page). Optional **Count-in** with tempo, time signature and metronome click. Mic level, live pitch trace, Basic Pitch transcription, takes. **Demo** loads a sample phrase. | Dragging notes in the piano roll |
+| **Arrange** | Layered piano roll, mute/solo, playback with tape counter, counter-melody picker (alto/tenor/soprano/bass, previewed before you keep it, with its chords). **Settings** (gear): title, tempo, time signature, key, melody clef, note spelling. Changing the tempo re-reads the sung rhythm. Counter-melodies rewrite themselves when the melody, key or time signature changes. **Score**: sheet music, print/PDF, ABC download, rounding warnings, the generated notation, and a note editor | Harmony options, locking notes |
+| **Parts** | "I'm singing" picker, Solo/Predominant/Missing mixes, faders, mix saved on this device, "my part only" score, send your part as a WAV (share sheet on phones, download elsewhere) | Share links/QR (needs Firebase vs. Supabase decision) |
+| **Practice** | Play your part with the others, loop, 50/75/100% speed | Live pitch feedback (build step 5) |
 
 How the pieces connect:
 
-- **Shared note model** (`src/noteModel.js`): `{midi, start, duration}` with times in **beats**. The recorder and renderer work in seconds internally. Convert at the boundary with `secondsToBeats` / `beatsToSeconds`.
-- **`counter_api.py`**: `POST /api/counter` takes `{notes, key, meter, bpm, voice}` (key names match `src/analyzeMelody.js`) and returns `{counter, clef, key, style, chords, ...}` in the same note format. Vite proxies `/api` to it (`vite.config.js`). `npm run api` runs only the API.
-- **`src/counterMelody.js`**: calls the API from the browser.
-- **`scoreToAbc(parts, opts)`** in `src/melodyToAbc.js`: renders any number of aligned staves. Future harmony parts can use it too.
+- **Note model** (`src/noteModel.js`): the docs/SPEC.md format, `{pitch, start, duration, locked, ornaments, lyric}` with times in beats. Basic Pitch and the ABC renderer use seconds, so convert only at those edges.
+- **`counter_api.py`**: `POST /api/counter` takes `{notes, key, meter, bpm, voice}` and returns `{counter, clef, key, style, chords, ...}` in the same note format. Vite proxies `/api` to it (`vite.config.js`). `npm run api` runs only the API.
+- **`scoreToAbc(parts, opts)`** in `src/melodyToAbc.js` renders any number of aligned staves.
 
 The API runs only in development (through the Vite proxy). A deployed build needs the Python API hosted somewhere, with `/api` routed to it.
 

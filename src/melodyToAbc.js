@@ -1,13 +1,10 @@
-import { KEYS, spellPitch } from './analyzeMelody.js';
+import { KEYS, keyScale, spellPitch } from './analyzeMelody.js';
 const LENGTHS = [16, 12, 8, 6, 4, 3, 2, 1];
 const PART_CLEFS = ['treble', 'treble-8', 'bass'];
 
-function pitchToken(midi, key, spelling) {
-  const { letter, alter, octave } = spellPitch(midi, key, spelling);
-  const accidental = alter < 0 ? '_'.repeat(-alter) : alter > 0 ? '^'.repeat(alter) : '=';
-  return accidental + (octave >= 5 ? letter.toLowerCase() : letter)
-    + (octave > 5 ? "'".repeat(octave - 5) : ','.repeat(Math.max(0, 4 - octave)));
-}
+const letterToken = ({ letter, octave }) => (octave >= 5 ? letter.toLowerCase() : letter)
+  + (octave > 5 ? "'".repeat(octave - 5) : ','.repeat(Math.max(0, 4 - octave)));
+const accidentalToken = alter => (alter < 0 ? '_'.repeat(-alter) : alter > 0 ? '^'.repeat(alter) : '=');
 
 function validateOptions({ bpm, meter, key, spelling, title }) {
   if (!Number.isFinite(bpm) || bpm < 20 || bpm > 300) throw new Error('Tempo must be between 20 and 300 BPM.');
@@ -49,26 +46,39 @@ function voiceLines(events, barTicks, key, spelling, totalTicks) {
   const lines = [[]];
   let cursor = 0;
   let bars = 0;
-  function emit(pitch, duration) {
+  // Accidentals follow standard notation: write one only when the pitch differs
+  // from the key signature, or from an earlier accidental on that line or space
+  // in the same bar. Bar lines cancel accidentals.
+  const signature = Object.fromEntries(keyScale(key).map(p => [p.letter, p.alter]));
+  let inBar = {};
+  function token(spelled) {
+    const place = letterToken(spelled);
+    const current = inBar[place] ?? signature[spelled.letter] ?? 0;
+    inBar[place] = spelled.alter;
+    return (spelled.alter === current ? '' : accidentalToken(spelled.alter)) + place;
+  }
+  function emit(spelled, duration) {
     while (duration > 0) {
       const available = Math.min(duration, barTicks - cursor % barTicks);
       const length = LENGTHS.find(value => value <= available);
       duration -= length;
-      lines.at(-1).push(`${pitch}${length === 1 ? '' : length}${pitch !== 'z' && duration ? '-' : ''}`);
+      const pitch = spelled ? token(spelled) : 'z';
+      lines.at(-1).push(`${pitch}${length === 1 ? '' : length}${spelled && duration ? '-' : ''}`);
       cursor += length;
       if (cursor % barTicks === 0) {
+        inBar = {};
         lines.at(-1).push('|');
         if (++bars % 4 === 0) lines.push([]);
       }
     }
   }
   for (const note of events) {
-    emit('z', note.start - cursor);
-    emit(pitchToken(note.midi, key, spelling), note.end - note.start);
+    emit(null, note.start - cursor);
+    emit(spellPitch(note.midi, key, spelling), note.end - note.start);
   }
-  emit('z', totalTicks - cursor);
+  emit(null, totalTicks - cursor);
   // Complete the final measure with visible rests.
-  if (cursor % barTicks) emit('z', barTicks - cursor % barTicks);
+  if (cursor % barTicks) emit(null, barTicks - cursor % barTicks);
   if (!lines.at(-1).length) lines.pop();
   return lines;
 }
