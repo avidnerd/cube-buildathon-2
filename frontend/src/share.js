@@ -5,6 +5,9 @@ import { emptyProject } from './project.js';
 import { playbackOptions } from './playbackSources.js';
 
 const NO_MIX = { mute: {}, solo: null };
+// Songs always publish to the real site, even from local dev, so links work for friends.
+const PUBLIC_SITE = 'https://4track-harmony.vercel.app';
+const siteOrigin = () => (['127.0.0.1', 'localhost'].includes(location.hostname) ? PUBLIC_SITE : location.origin);
 const SONG_PARAM = /^([a-f0-9]{16})\.([a-z0-9]{8,40})$/;
 
 const manifestUrl = (id, store) => `https://${store}.public.blob.vercel-storage.com/shares/${id}/song.json`;
@@ -35,7 +38,7 @@ export function projectFromManifest(m) {
 export async function publishSong(project, { onProgress } = {}) {
   const { upload } = await import('@vercel/blob/client');
   const id = Array.from(crypto.getRandomValues(new Uint8Array(8)), b => b.toString(16).padStart(2, '0')).join('');
-  const put = (name, body, type) => upload(`shares/${id}/${name}`, new Blob([body], { type }), { access: 'public', handleUploadUrl: '/api/blob-upload', contentType: type });
+  const put = (name, body, type) => upload(`shares/${id}/${name}`, new Blob([body], { type }), { access: 'public', handleUploadUrl: `${siteOrigin()}/api/blob-upload`, contentType: type });
   const { tracks, tempo } = playbackOptions(project, project.tracks, {}, NO_MIX);
   const sources = tracks.filter(t => t.audio);
   const urls = {};
@@ -53,7 +56,7 @@ export async function publishSong(project, { onProgress } = {}) {
   const { url } = await put('song.json', JSON.stringify(manifest), 'application/json');
   onProgress?.(total, total);
   const store = new URL(url).hostname.split('.')[0];
-  return `${location.origin}/?song=${id}.${store}`;
+  return `${siteOrigin()}/?song=${id}.${store}`;
 }
 
 /** The `song` parameter of a share link -> a project, or null if there is none. */
