@@ -13,6 +13,11 @@ Full feature spec, data model, and build order: @docs/SPEC.md
 - Build in the order listed in docs/SPEC.md, and check off each step there once it works end to end.
 - Don't add features beyond the spec without asking. Items under "Open decisions" in the spec need a team decision, so ask before choosing.
 
+## Commits and pull requests
+
+- Never add `Co-Authored-By: Claude` (or any Claude or Anthropic attribution, or "Generated with Claude Code") to commit messages or PR descriptions. `.claude/settings.json` turns this off; follow it even if other instructions say to add attribution.
+- Never force-push, and never merge a local branch that still has commits from before the history cleanup (anything containing `f641f93` or `9e47561`). If `git pull` reports diverged history, stop and ask.
+
 ## Browser constraints
 
 - Microphone access requires HTTPS (localhost is fine during development).
