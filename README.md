@@ -4,6 +4,8 @@ Write a melody in LilyPond. This tool writes **one** independent counter-melody 
 
 It's all rule-based counterpoint: no ML, no randomness, and the same input always gives the same output.
 
+This README covers the Python counter-melody generator. The JavaScript app in `src/` (melody to sheet music with Basic Pitch) is described in `FEATURE.md`.
+
 ## What's the app vs. what's testing only
 
 | part | status | what it is |
