@@ -20,6 +20,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from backend.harmony.beats import BeatGrid
+
 FMIN = 70.0     # Hz, below a low bass voice
 FMAX = 1100.0   # Hz, above a soprano C6; also rejects a 2 kHz metronome click
 FRAME = 1024
@@ -260,33 +262,26 @@ def _snap(b: float, grid: float) -> float:
     return round(b / grid) * grid
 
 
-def estimate_lag(raw: list[RawNote], bpm: float, offset: float) -> float:
-    """Constant lateness (s) of onsets vs. the beat: input latency plus habit.
+def estimate_lag(raw: list[RawNote], beats: BeatGrid) -> float:
+    """Constant lateness of onsets vs. the beat, in beats: input latency plus habit.
 
     Median residual to the nearest beat, using only onsets that are close to
     a beat (others are off-beat notes and say nothing about lag).
     """
-    spb = 60.0 / bpm
     res = []
     for n in raw:
-        b = (n.t0 - offset) / spb
+        b = beats.to_beats(n.t0)
         r = b - round(b)
         if abs(r) < 0.2:
             res.append(r)
-    if len(res) < 3:
-        return 0.0
-    return float(np.median(res)) * spb
+    return float(np.median(res)) if len(res) >= 3 else 0.0
 
 
-def quantize(raw: list[RawNote], bpm: float, offset: float, grid: float = 0.25,
-             legato_gap: float = 0.25, compensate_lag: bool = True) -> list[dict]:
-    spb = 60.0 / bpm
-    if compensate_lag:
-        offset = offset + estimate_lag(raw, bpm, offset)
+def quantize(raw: list[RawNote], beats: BeatGrid, grid: float = 0.25, legato_gap: float = 0.25) -> list[dict]:
     out: list[dict] = []
     for n in raw:
-        s = _snap((n.t0 - offset) / spb, grid)
-        e = _snap((n.t1 - offset) / spb, grid)
+        s = _snap(beats.to_beats(n.t0), grid)
+        e = _snap(beats.to_beats(n.t1), grid)
         if e <= 0:
             continue  # sung during the count-in
         s = max(s, 0.0)
@@ -308,12 +303,16 @@ def quantize(raw: list[RawNote], bpm: float, offset: float, grid: float = 0.25,
     return out
 
 
-def transcribe(samples: np.ndarray, sr: int, bpm: float, offset: float = 0.0,
-               grid: float = 0.25, align_first_note: bool = False) -> Transcription:
-    """samples: mono float audio. offset: seconds into the audio where beat 0 is.
+def transcribe(samples: np.ndarray, sr: int, bpm: float | None = None, offset: float = 0.0,
+               grid: float = 0.25, align_first_note: bool = False,
+               beat_grid: BeatGrid | None = None) -> Transcription:
+    """samples: mono float audio (ideally an isolated voice).
 
-    align_first_note: ignore `offset` and put beat 0 at the first sung note
-    (for uploaded audio recorded without a count-in).
+    Timing, one of:
+      beat_grid          beats tracked from the song (sung timing kept as-is)
+      bpm + offset       a click-track recording; offset = seconds where beat 0 is.
+                         Constant lateness is measured and removed.
+      align_first_note   with bpm: beat 0 = the first sung note (no count-in)
     """
     x = np.asarray(samples, dtype=np.float64)
     if x.ndim > 1:
@@ -332,11 +331,25 @@ def transcribe(samples: np.ndarray, sr: int, bpm: float, offset: float = 0.0,
     midi = midi - off
 
     raw = _segment(times, midi, _short_rms(x, sr, times))
-    if align_first_note and raw:
-        offset = raw[0].t0
-    lag = estimate_lag(raw, bpm, offset)
-    beat0 = offset + lag  # where beat 0 actually is in this audio
-    notes = quantize(raw, bpm, beat0, grid, compensate_lag=False)
+    lag_ms = 0.0
+    if beat_grid is None:
+        if bpm is None:
+            raise ValueError("need bpm or beat_grid")
+        if align_first_note and raw:
+            offset = raw[0].t0
+        beats = BeatGrid.constant(bpm, offset)
+        lag = estimate_lag(raw, beats) * 60.0 / bpm
+        beats = beats.shifted(lag)
+        lag_ms = lag * 1000
+    else:
+        beats = beat_grid
+    notes = quantize(raw, beats, grid)
     sung = (min(n["pitch"] for n in notes), max(n["pitch"] for n in notes)) if notes else None
-    return Transcription(notes, raw, off * 100, times, midi, sung,
-                         {"bpm": bpm, "beat0": round(beat0, 4), "lag_ms": round(lag * 1000, 1), "grid": grid})
+    n_beats = int(np.ceil(max((n["start"] + n["duration"] for n in notes), default=0))) + 2
+    return Transcription(notes, raw, off * 100, times, midi, sung, {
+        "bpm": round(beats.bpm, 2),
+        "beat0": round(float(beats.times[0]), 4),
+        "beats": beats.trimmed(n_beats),
+        "lag_ms": round(lag_ms, 1),
+        "grid": grid,
+    })
