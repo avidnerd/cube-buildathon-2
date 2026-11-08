@@ -541,6 +541,7 @@ LENSES = {
 }
 W_LENS = 1.0
 LENS_NOVELTY_FLOOR = 0.4  # a lens at 1.0 implies at least this much novelty
+TRITONE_SUB_BONUS = 2.0   # per beat, for bII7 replacing a detected V7
 
 
 def _lens_emission(palette: dict[str, float], tonic: int, mode: str) -> np.ndarray:
@@ -568,8 +569,8 @@ def _lens_transition(palette: dict[str, float], tonic: int) -> np.ndarray:
             motion = (b.root - a.root) % 12
             if a.quality == "7" and motion == 5 and b.root != tonic and b.quality != "dim":
                 B[i, j] += 1.2 * W_LENS * sec        # V7/x -> x  (V7 -> I is already cheap)
-            if a.quality == "7" and motion == 11 and b.quality != "dim":
-                B[i, j] += 2.0 * W_LENS * tri        # bII7 -> I, the tritone sub
+            if a.quality == "7" and motion == 11 and b.quality not in ("dim", "7"):
+                B[i, j] += 0.8 * W_LENS * tri        # bII7 -> I, the tritone sub
             if a.quality == "dim" and motion == 1:
                 B[i, j] += 2.0 * W_LENS * pas
             if a.quality == "sus4" and motion == 0 and b.quality in ("maj", "7", "min"):
@@ -678,7 +679,7 @@ def explain_progression(
                 tags.append("dominant: pulls home to the tonic")
             else:
                 tags.append(f"secondary dominant: V7/{roman(nxt, tonic, suffix=False)}, tonicizes {nxt.name} for a moment")
-        if c.quality == "7" and motion == 11 and nxt is not None:
+        if c.quality == "7" and motion == 11 and nxt is not None and nxt.quality not in ("dim", "7"):
             tags.append(f"tritone substitution: stands in for {NOTE_NAMES[(nxt.root + 7) % 12]}7, bass slides down a semitone")
         if c.quality == "dim" and motion == 1 and nxt is not None:
             tags.append(f"passing diminished: leans up a semitone into {nxt.name}")
@@ -833,6 +834,15 @@ def reharmonize(
         E[t] += novelty * W_NOVELTY * d                      # the slider's bonus
         E[t] -= W_TARGET * (d - target) ** 2                 # ...shaped around a target distance
         E[t, c.index] += (1.0 - novelty) * W_EXACT          # novelty 0 => the detected chord wins
+
+    # Tritone lens, substitution half: offer bII7 wherever a dominant 7th was
+    # detected. (The resolution half lives in _lens_transition.) Needed because
+    # the tritone sub is far in phase space and the novelty shaping resists it.
+    tri = palette.get("tritone", 0.0)
+    if tri:
+        for t, c in enumerate(original):
+            if c is not None and c.quality == "7":
+                E[t, Chord(c.root + 6, "7").index] += TRITONE_SUB_BONUS * tri
 
     # Locks: the human's decisions are hard constraints.
     if locks is not None:

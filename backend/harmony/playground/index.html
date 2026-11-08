@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Harmony Playground</title>
+<style>
+  :root {
+    --bg: #f6f4ef; --panel: #ffffff; --ink: #1d1b18; --muted: #6f6a61; --line: #e3dfd6;
+    --accent: #c2410c; --melody: #1d1b18; --upper: #c2410c; --lower: #0f766e;
+    --changed: #fff1e6; --lock: #7c3aed; --band: rgba(15,118,110,.07);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #151412; --panel: #1e1c19; --ink: #efebe4; --muted: #9a948a; --line: #2f2c27;
+      --accent: #fb923c; --melody: #efebe4; --upper: #fb923c; --lower: #2dd4bf;
+      --changed: #3a2a1d; --lock: #a78bfa; --band: rgba(45,212,191,.08);
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { padding: 18px 24px 6px; display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  h1 { font-size: 19px; margin: 0; letter-spacing: -.01em; }
+  header p { margin: 0; color: var(--muted); }
+  main { display: grid; grid-template-columns: 330px 1fr; gap: 16px; padding: 12px 24px 32px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; padding: 12px 16px; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .stack > * + * { margin-top: 14px; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 8px; font-weight: 600; }
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  textarea, input[type=text], select {
+    width: 100%; font: 13px ui-monospace, "SF Mono", Menlo, monospace; color: var(--ink);
+    background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 7px 8px;
+  }
+  textarea { resize: vertical; min-height: 58px; }
+  .hint { font-size: 11.5px; color: var(--muted); margin-top: 4px; }
+  .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .slider { display: grid; grid-template-columns: 82px 1fr 34px; align-items: center; gap: 8px; margin: 5px 0; }
+  .slider span:first-child { font-size: 12.5px; }
+  .slider output { font: 12px ui-monospace, monospace; color: var(--muted); text-align: right; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  button { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+           border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+  button:hover { border-color: var(--muted); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .tabs button[aria-pressed=true] { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .chords { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(58px, 1fr); gap: 4px; overflow-x: auto; padding-bottom: 4px; }
+  .beat { border: 1px solid var(--line); border-radius: 6px; padding: 5px 4px; text-align: center; cursor: pointer; user-select: none; position: relative; }
+  .beat .sym { font-weight: 650; font-size: 13.5px; }
+  .beat .rn, .beat .orig { font-size: 11px; color: var(--muted); }
+  .beat.changed { background: var(--changed); }
+  .beat.locked { border: 2px solid var(--lock); padding: 4px 3px; }
+  .beat.locked::after { content: "🔒"; position: absolute; top: -8px; right: -4px; font-size: 11px; }
+  .beat.bar { margin-left: 6px; }
+  canvas { width: 100%; height: 300px; display: block; border-radius: 6px; background: var(--bg); }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+  .legend i { display: inline-block; width: 14px; height: 4px; border-radius: 2px; vertical-align: middle; margin-right: 5px; }
+  .styles label { display: inline-flex; align-items: center; gap: 5px; margin: 0 12px 4px 0; color: var(--ink); font-size: 13px; cursor: pointer; }
+  .styledesc { font-size: 12px; color: var(--muted); }
+  ul.expl { list-style: none; padding: 0; margin: 0; }
+  ul.expl li { padding: 7px 0; border-top: 1px solid var(--line); }
+  ul.expl li:first-child { border-top: 0; }
+  .expl b { font-weight: 650; }
+  .expl .when { font: 11.5px ui-monospace, monospace; color: var(--muted); margin-right: 6px; }
+  .expl .tag { display: block; color: var(--muted); font-size: 12.5px; margin-left: 2px; }
+  .error { color: #dc2626; font-size: 13px; white-space: pre-wrap; }
+  .status { font-size: 12px; color: var(--muted); }
+  .checks label { display: inline-flex; gap: 4px; align-items: center; margin: 0 10px 0 0; color: var(--ink); font-size: 12.5px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Harmony Playground</h1>
+  <p>Type a tune, steer the reharmonizer, listen. Click a chord to lock it.</p>
+</header>
+
+<main>
+  <!-- Controls -->
+  <section class="panel stack">
+    <div>
+      <label for="preset">Preset</label>
+      <select id="preset"></select>
+    </div>
+    <div>
+      <label for="melody">Melody</label>
+      <textarea id="melody" rows="3"></textarea>
+      <div class="hint">Notes like <code>C4 E4:2 r:0.5 F#4:0.5</code>. <code>:n</code> = beats (default 1), <code>r</code> = rest, <code>|</code> ignored.</div>
+    </div>
+    <div>
+      <label for="chords">Detected chords</label>
+      <textarea id="chords" rows="2"></textarea>
+      <div class="hint"><code>C:4 F:2 G7:2</code>. <code>:n</code> = beats.</div>
+    </div>
+    <div>
+      <label>Harmony singer's range (low · high · comfy low · comfy high)</label>
+      <div class="grid4">
+        <input type="text" id="low" value="C3">
+        <input type="text" id="high" value="G5">
+        <input type="text" id="strongLow" value="D3">
+        <input type="text" id="strongHigh" value="E5">
+      </div>
+    </div>
+    <div>
+      <h2>How far</h2>
+      <div class="slider"><span>Novelty</span><input type="range" id="novelty" min="0" max="1" step="0.05" value="0"><output id="novelty-out">0</output></div>
+    </div>
+    <div>
+      <h2>Which direction (lenses)</h2>
+      <div id="lenses"></div>
+    </div>
+    <div class="row">
+      <button class="primary" id="go">Reharmonize</button>
+      <button id="clear-locks">Clear locks</button>
+      <span class="status" id="status"></span>
+    </div>
+    <div class="error" id="error"></div>
+  </section>
+
+  <!-- Results -->
+  <section class="stack">
+    <div class="panel">
+      <div class="row" style="justify-content: space-between">
+        <div class="row tabs" id="tabs"></div>
+        <span class="status" id="keyinfo"></span>
+      </div>
+      <div class="chords" id="chordgrid" style="margin-top:12px"></div>
+    </div>
+
+    <div class="panel">
+      <div class="row" style="justify-content: space-between; margin-bottom: 8px">
+        <div class="row">
+          <button class="primary" id="play">▶ Play</button>
+          <div class="slider" style="grid-template-columns: 44px 120px 34px; margin:0"><span>Tempo</span><input type="range" id="bpm" min="50" max="180" value="96"><output id="bpm-out">96</output></div>
+        </div>
+        <div class="checks">
+          <label><input type="checkbox" id="l-melody" checked> melody</label>
+          <label><input type="checkbox" id="l-chords" checked> chords</label>
+          <label><input type="checkbox" id="l-upper" checked> upper</label>
+          <label><input type="checkbox" id="l-lower" checked> lower</label>
+        </div>
+      </div>
+      <canvas id="roll"></canvas>
+      <div class="legend" style="margin-top:8px">
+        <span><i style="background:var(--melody)"></i>melody</span>
+        <span><i style="background:var(--upper)"></i>third above</span>
+        <span><i style="background:var(--lower)"></i>sixth below</span>
+        <span><i style="background:var(--band); outline:1px dashed var(--lower)"></i>singer's range (dashed = comfy)</span>
+      </div>
+      <div style="margin-top:12px">
+        <h2>Harmony style</h2>
+        <div class="styles" id="styles"></div>
+        <div class="styledesc" id="styledesc"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Why these chords</h2>
+      <ul class="expl" id="expl"><li class="status">Nothing changed yet. Raise novelty or a lens.</li></ul>
+    </div>
+  </section>
+</main>
+
+<script>
+const PRESETS = {
+  "Twinkle (C major)": {
+    melody: "C4 C4 G4 G4 | A4 A4 G4:2 | F4 F4 E4 E4 | D4 D4 C4:2",
+    chords: "C:4 | F:2 C:2 | F:2 C:2 | G:2 C:2",
+  },
+  "ii–V–I (try the tritone lens)": {
+    melody: "F4 D4 F4 B4 | E4:4 | F4 A4 F4 B4 | C5:4",
+    chords: "Dm7:2 G7:2 | C:4 | Dm7:2 G7:2 | C:4",
+  },
+  "Minor tune (A minor)": {
+    melody: "A4 C5:0.5 B4:0.5 A4:2 | F4 E4 D4:2 | E4 F4 E4 D4 | C4 B3 A3:2",
+    chords: "Am:4 | Dm:4 | E7:4 | Am:4",
+  },
+  "Pop I–V–vi–IV": {
+    melody: "E5 D5 C5 D5 | D5:2 B4:2 | C5 B4 A4 C5 | A4:4",
+    chords: "C:4 | G:4 | Am:4 | F:4",
+  },
+};
+const NOTE_PC = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+const NAMES = ["C","C#","D","Eb","E","F","F#","G","Ab","A","Bb","B"];
+const $ = (id) => document.getElementById(id);
+
+let meta = { lenses: {}, styles: {} };
+let result = null, current = 0, style = "parallel";
+let locks = {};   // beat -> symbol
+
+// ---------- parsing ----------
+function toMidi(name) {
+  const m = /^([A-Ga-g])([#b]?)(-?\d)$/.exec(name);
+  if (!m) throw new Error(`can't read note "${name}"`);
+  return 12 * (+m[3] + 1) + NOTE_PC[m[1].toUpperCase()] + (m[2] === "#" ? 1 : m[2] === "b" ? -1 : 0);
+}
+const midiName = (p) => NAMES[p % 12] + (Math.floor(p / 12) - 1);
+function splitDur(tok) {
+  const [a, b] = tok.split(":");
+  const d = b === undefined ? 1 : parseFloat(b);
+  if (!(d > 0)) throw new Error(`bad duration in "${tok}"`);
+  return [a, d];
+}
+function parseMelody(text) {
+  let t = 0; const notes = [];
+  for (const tok of text.split(/\s+/).filter((x) => x && x !== "|")) {
+    const [n, d] = splitDur(tok);
+    if (n.toLowerCase() !== "r") notes.push({ pitch: toMidi(n), start: t, duration: d });
+    t += d;
+  }
+  return notes;
+}
+function parseChords(text) {
+  const beats = [];
+  for (const tok of text.split(/\s+/).filter((x) => x && x !== "|")) {
+    const [c, d] = splitDur(tok);
+    for (let i = 0; i < Math.round(d); i++) beats.push(c);
+  }
+  return beats;
+}
+
+// ---------- API ----------
+async function run() {
+  $("error").textContent = "";
+  let body;
+  try {
+    const palette = {};
+    for (const k of Object.keys(meta.lenses)) {
+      const v = +$("lens-" + k).value;
+      if (k === "density" ? v !== 0.5 : v > 0) palette[k] = v;
+    }
+    body = {
+      melody: parseMelody($("melody").value),
+      chords: parseChords($("chords").value),
+      novelty: +$("novelty").value,
+      palette, locks,
+      voice: { low: $("low").value, high: $("high").value, strongLow: $("strongLow").value, strongHigh: $("strongHigh").value },
+    };
+  } catch (e) { $("error").textContent = e.message; return; }
+  $("status").textContent = "thinking…";
+  const t0 = performance.now();
+  try {
+    const r = await fetch("/api/reharmonize", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.statusText);
+    result = { ...j, request: body };
+    current = Math.min(current, j.paths.length - 1);
+    $("status").textContent = `${Math.round(performance.now() - t0)} ms`;
+    render();
+  } catch (e) { $("error").textContent = e.message; $("status").textContent = ""; }
+}
+let debounce;
+const runSoon = () => { clearTimeout(debounce); debounce = setTimeout(run, 180); };
+
+// ---------- render ----------
+function render() {
+  if (!result) return;
+  const path = result.paths[current];
+  const orig = result.request.chords;
+
+  $("tabs").innerHTML = "";
+  result.paths.forEach((p, i) => {
+    const b = document.createElement("button");
+    b.textContent = `Option ${i + 1}`;
+    b.title = `score ${p.score}, ${p.changed_beats.length} beats changed`;
+    b.setAttribute("aria-pressed", i === current);
+    b.onclick = () => { current = i; render(); };
+    $("tabs").appendChild(b);
+  });
+  $("keyinfo").textContent = `key: ${path.key.tonic} ${path.key.mode} · ${path.changed_beats.length} beats changed`;
+
+  const grid = $("chordgrid"); grid.innerHTML = "";
+  path.chords.forEach((sym, t) => {
+    const d = document.createElement("div");
+    const changed = path.changed_beats.includes(t);
+    d.className = "beat" + (changed ? " changed" : "") + (t in locks ? " locked" : "") + (t > 0 && t % 4 === 0 ? " bar" : "");
+    d.innerHTML = `<div class="sym">${sym}</div><div class="rn">${path.romans[t]}</div><div class="orig">${changed ? "was " + (orig[t] ?? "–") : "&nbsp;"}</div>`;
+    d.title = t in locks ? "Locked. Click to unlock." : "Click to lock this chord";
+    d.onclick = () => { if (t in locks) delete locks[t]; else locks[t] = sym; run(); };
+    grid.appendChild(d);
+  });
+
+  const ex = $("expl"); ex.innerHTML = "";
+  if (!path.explanations.length) ex.innerHTML = `<li class="status">Same as detected. Raise novelty or a lens.</li>`;
+  for (const e of path.explanations) {
+    const li = document.createElement("li");
+    const beats = e.end - e.start === 1 ? `beat ${e.start + 1}` : `beats ${e.start + 1}–${e.end}`;
+    li.innerHTML = `<span class="when">${beats}</span><b>${e.from} → ${e.to}</b> <span class="status">(${e.roman})</span>` +
+      e.tags.map((t) => `<span class="tag">${t}</span>`).join("");
+    ex.appendChild(li);
+  }
+  $("styledesc").textContent = meta.styles[style] || "";
+  drawRoll();
+}
+
+function css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+let playhead = null;
+function drawRoll() {
+  const cv = $("roll"), dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth, H = cv.clientHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const g = cv.getContext("2d"); g.scale(dpr, dpr); g.clearRect(0, 0, W, H);
+  if (!result) return;
+  const path = result.paths[current], mel = result.request.melody, h = path.harmony[style];
+  const v = result.request.voice;
+  let lo, hi, range;
+  try { range = [toMidi(v.low), toMidi(v.high), toMidi(v.strongLow), toMidi(v.strongHigh)]; } catch { range = null; }
+  const all = [...mel, ...h.third_above, ...h.sixth_below].map((n) => n.pitch).concat(range ? [range[0], range[1]] : []);
+  lo = Math.min(...all) - 2; hi = Math.max(...all) + 2;
+  const beats = path.chords.length, top = 22, left = 34;
+  const x = (b) => left + (b / beats) * (W - left - 6);
+  const rowH = (H - top - 6) / (hi - lo + 1);
+  const y = (p) => top + (hi - p) * rowH;
+
+  // pitch rows
+  g.font = "10px ui-monospace, monospace"; g.textBaseline = "middle";
+  for (let p = lo; p <= hi; p++) {
+    if (p % 12 === 0) {
+      g.fillStyle = css("--line"); g.fillRect(left, y(p) + rowH - 0.5, W - left, 1);
+      g.fillStyle = css("--muted"); g.fillText(midiName(p), 2, y(p) + rowH / 2);
+    }
+  }
+  // singer range
+  if (range) {
+    g.fillStyle = css("--band"); g.fillRect(left, y(range[1]), W - left, y(range[0]) - y(range[1]) + rowH);
+    g.strokeStyle = css("--lower"); g.setLineDash([4, 4]); g.globalAlpha = 0.5;
+    for (const p of [range[2], range[3] + 1]) { g.beginPath(); g.moveTo(left, y(p) + rowH); g.lineTo(W, y(p) + rowH); g.stroke(); }
+    g.setLineDash([]); g.globalAlpha = 1;
+  }
+  // beats + chord labels
+  for (let b = 0; b <= beats; b++) {
+    g.fillStyle = css("--line"); g.globalAlpha = b % 4 === 0 ? 1 : 0.45;
+    g.fillRect(x(b), top, 1, H - top); g.globalAlpha = 1;
+  }
+  g.fillStyle = css("--ink"); g.font = "600 11px ui-sans-serif, system-ui"; g.textBaseline = "top";
+  for (const seg of path.timeline) g.fillText(seg.symbol, x(seg.start) + 3, 5);
+
+  const drawNotes = (notes, color, alpha) => {
+    g.fillStyle = color; g.globalAlpha = alpha;
+    for (const n of notes) {
+      const w = Math.max(2, x(n.start + n.duration) - x(n.start) - 2);
+      g.beginPath(); g.roundRect(x(n.start) + 1, y(n.pitch) + 1, w, Math.max(3, rowH - 2), 3); g.fill();
+    }
+    g.globalAlpha = 1;
+  };
+  if ($("l-lower").checked) drawNotes(h.sixth_below, css("--lower"), 0.85);
+  if ($("l-upper").checked) drawNotes(h.third_above, css("--upper"), 0.85);
+  if ($("l-melody").checked) drawNotes(mel, css("--melody"), 0.9);
+
+  if (playhead !== null) { g.fillStyle = css("--accent"); g.fillRect(x(playhead), top, 2, H - top); }
+}
+
+// ---------- audio ----------
+let ctx = null, playing = null;
+const hz = (p) => 440 * Math.pow(2, (p - 69) / 12);
+function voice(dest, pitch, t0, dur, type, gain) {
+  const o = ctx.createOscillator(), a = ctx.createGain();
+  o.type = type; o.frequency.value = hz(pitch);
+  a.gain.setValueAtTime(0, t0);
+  a.gain.linearRampToValueAtTime(gain, t0 + 0.015);
+  a.gain.setTargetAtTime(gain * 0.7, t0 + 0.05, 0.2);
+  a.gain.setTargetAtTime(0, t0 + Math.max(0.03, dur - 0.04), 0.04);
+  o.connect(a).connect(dest); o.start(t0); o.stop(t0 + dur + 0.3);
+  return o;
+}
+function stop() {
+  if (!playing) return;
+  playing.oscs.forEach((o) => { try { o.stop(); } catch {} });
+  cancelAnimationFrame(playing.raf); playing = null; playhead = null;
+  $("play").textContent = "▶ Play"; drawRoll();
+}
+function play() {
+  if (playing) return stop();
+  if (!result) return;
+  ctx = ctx || new AudioContext();
+  const spb = 60 / +$("bpm").value, t0 = ctx.currentTime + 0.08;
+  const path = result.paths[current], h = path.harmony[style];
+  const master = ctx.createGain(); master.gain.value = 0.5;
+  const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 2600;
+  master.connect(lp).connect(ctx.destination);
+  const oscs = [];
+  if ($("l-chords").checked) for (const seg of path.timeline)
+    for (const p of seg.voicing) oscs.push(voice(master, p, t0 + seg.start * spb, (seg.end - seg.start) * spb, "sine", 0.07));
+  const layer = (notes, type, gain) => notes.forEach((n) => oscs.push(voice(master, n.pitch, t0 + n.start * spb, n.duration * spb, type, gain)));
+  if ($("l-lower").checked) layer(h.sixth_below, "triangle", 0.13);
+  if ($("l-upper").checked) layer(h.third_above, "triangle", 0.13);
+  if ($("l-melody").checked) layer(result.request.melody, "sawtooth", 0.07);
+  const total = path.chords.length * spb;
+  playing = { oscs };
+  $("play").textContent = "■ Stop";
+  const tick = () => {
+    const el = ctx.currentTime - t0;
+    if (el > total + 0.2) return stop();
+    playhead = Math.max(0, el / spb); drawRoll();
+    playing.raf = requestAnimationFrame(tick);
+  };
+  playing.raf = requestAnimationFrame(tick);
+}
+
+// ---------- wiring ----------
+function loadPreset(name) {
+  $("melody").value = PRESETS[name].melody;
+  $("chords").value = PRESETS[name].chords;
+  locks = {}; run();
+}
+async function init() {
+  meta = await (await fetch("/api/meta")).json();
+  for (const name of Object.keys(PRESETS)) $("preset").add(new Option(name, name));
+  $("preset").onchange = (e) => loadPreset(e.target.value);
+
+  for (const [k, desc] of Object.entries(meta.lenses)) {
+    const row = document.createElement("div"); row.className = "slider"; row.title = desc;
+    const init = k === "density" ? 0.5 : 0;
+    row.innerHTML = `<span>${k}</span><input type="range" id="lens-${k}" min="0" max="1" step="0.05" value="${init}"><output id="lens-${k}-out">${init}</output>`;
+    $("lenses").appendChild(row);
+    row.querySelector("input").oninput = (e) => { $(`lens-${k}-out`).textContent = e.target.value; runSoon(); };
+  }
+  for (const [k, desc] of Object.entries(meta.styles)) {
+    const l = document.createElement("label");
+    l.innerHTML = `<input type="radio" name="style" value="${k}" ${k === style ? "checked" : ""}> ${k}`;
+    l.title = desc;
+    l.querySelector("input").onchange = () => { style = k; stop(); render(); };
+    $("styles").appendChild(l);
+  }
+  $("novelty").oninput = (e) => { $("novelty-out").textContent = e.target.value; runSoon(); };
+  $("bpm").oninput = (e) => { $("bpm-out").textContent = e.target.value; };
+  $("go").onclick = run;
+  $("clear-locks").onclick = () => { locks = {}; run(); };
+  $("play").onclick = play;
+  for (const id of ["l-melody", "l-chords", "l-upper", "l-lower"]) $(id).onchange = drawRoll;
+  for (const id of ["melody", "chords", "low", "high", "strongLow", "strongHigh"]) $(id).onchange = () => { if (id === "melody" || id === "chords") locks = {}; run(); };
+  window.addEventListener("resize", drawRoll);
+  document.addEventListener("keydown", (e) => { if (e.code === "Space" && !/TEXTAREA|INPUT/.test(e.target.tagName)) { e.preventDefault(); play(); } });
+  loadPreset(Object.keys(PRESETS)[0]);
+}
+init();
+</script>
+</body>
+</html>
