@@ -1,0 +1,25 @@
+{
+  "name": "singing-sheet-music",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "node --test tests/*.test.js",
+    "predev": "node scripts/prepare-model.mjs",
+    "prebuild": "node scripts/prepare-model.mjs",
+    "test:integration": "node --test tests/integration/*.test.js"
+  },
+  "dependencies": {
+    "@spotify/basic-pitch": "1.0.1",
+    "@tensorflow/tfjs": "3.21.0",
+    "abcjs": "6.7.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "vite": "8.3.6"
+  }
+}
