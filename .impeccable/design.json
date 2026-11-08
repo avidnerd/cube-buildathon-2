@@ -1,0 +1,436 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-08T06:16:02.806046+00:00",
+  "title": "Design System: 4-Track",
+  "extensions": {
+    "colorMeta": {
+      "ink-ground": {
+        "role": "neutral",
+        "displayName": "Ink Ground",
+        "canonical": "#15131F",
+        "oklch": "oklch(19.5% 0.024 291.7)",
+        "tonalRamp": [
+          "#0B0B0E",
+          "#242329",
+          "#403E47",
+          "#5D5C68",
+          "#807E8E",
+          "#A4A3B0",
+          "#CAC9D3",
+          "#EEEDF5"
+        ]
+      },
+      "deck-panel": {
+        "role": "neutral",
+        "displayName": "Deck Panel",
+        "canonical": "#1D1A2B",
+        "oklch": "oklch(23.0% 0.033 291.7)",
+        "tonalRamp": [
+          "#0B0B0E",
+          "#24232A",
+          "#403E4A",
+          "#5D5B6C",
+          "#807D93",
+          "#A4A2B4",
+          "#CAC8D7",
+          "#EEEDF7"
+        ]
+      },
+      "grid-line": {
+        "role": "neutral",
+        "displayName": "Grid Line",
+        "canonical": "#2C2840",
+        "oklch": "oklch(29.3% 0.043 291.1)",
+        "tonalRamp": [
+          "#0B0A0F",
+          "#24232D",
+          "#403D4D",
+          "#5D5A70",
+          "#807C99",
+          "#A4A1B9",
+          "#CAC8DB",
+          "#EEEDFA"
+        ]
+      },
+      "counter-well": {
+        "role": "neutral",
+        "displayName": "Counter Well",
+        "canonical": "#0C0B13",
+        "oklch": "oklch(15.5% 0.017 290.0)",
+        "tonalRamp": [
+          "#0B0B0D",
+          "#242327",
+          "#3F3F45",
+          "#5D5C65",
+          "#807F8A",
+          "#A4A3AD",
+          "#CAC9D1",
+          "#EEEEF3"
+        ]
+      },
+      "paper-cream": {
+        "role": "neutral",
+        "displayName": "Paper Cream",
+        "canonical": "#F4EFE6",
+        "oklch": "oklch(95.4% 0.013 82.4)",
+        "tonalRamp": [
+          "#0C0B0A",
+          "#252421",
+          "#423F3B",
+          "#615D57",
+          "#848078",
+          "#A8A49D",
+          "#CDCAC5",
+          "#F0EEEA"
+        ]
+      },
+      "cream-edge": {
+        "role": "neutral",
+        "displayName": "Cream Edge",
+        "canonical": "#C9C1B3",
+        "oklch": "oklch(81.4% 0.021 81.8)",
+        "tonalRamp": [
+          "#0C0B09",
+          "#26241F",
+          "#433F38",
+          "#625D53",
+          "#877F72",
+          "#AAA499",
+          "#CFCAC1",
+          "#F1EEE8"
+        ]
+      },
+      "dusk-muted": {
+        "role": "neutral",
+        "displayName": "Dusk Muted",
+        "canonical": "#A8A3BC",
+        "oklch": "oklch(72.8% 0.036 294.7)",
+        "tonalRamp": [
+          "#0B0A0F",
+          "#24232B",
+          "#403E4B",
+          "#5E5B6D",
+          "#817C94",
+          "#A5A1B5",
+          "#CBC8D8",
+          "#EFEDF8"
+        ]
+      },
+      "track-coral": {
+        "role": "primary",
+        "displayName": "Track Coral",
+        "canonical": "#FF6B5B",
+        "oklch": "oklch(70.9% 0.184 28.7)",
+        "tonalRamp": [
+          "#1B0302",
+          "#43100B",
+          "#702019",
+          "#A03229",
+          "#D8473A",
+          "#F37D6E",
+          "#FFAFA1",
+          "#FFDCD2"
+        ]
+      },
+      "track-amber": {
+        "role": "primary",
+        "displayName": "Track Amber",
+        "canonical": "#FFBE3D",
+        "oklch": "oklch(84.0% 0.155 80.2)",
+        "tonalRamp": [
+          "#130900",
+          "#351F00",
+          "#593800",
+          "#815300",
+          "#AF7200",
+          "#CD9B3D",
+          "#EBC484",
+          "#FFEBBE"
+        ]
+      },
+      "amber-edge": {
+        "role": "primary",
+        "displayName": "Amber Edge",
+        "canonical": "#C98E1C",
+        "oklch": "oklch(68.8% 0.137 77.4)",
+        "tonalRamp": [
+          "#130900",
+          "#341F00",
+          "#583900",
+          "#7F5400",
+          "#AD7300",
+          "#CB9B50",
+          "#E9C48E",
+          "#FFEAC4"
+        ]
+      },
+      "track-mint": {
+        "role": "primary",
+        "displayName": "Track Mint",
+        "canonical": "#4FDBA0",
+        "oklch": "oklch(80.1% 0.148 161.8)",
+        "tonalRamp": [
+          "#001007",
+          "#002D1A",
+          "#004E30",
+          "#007148",
+          "#009A64",
+          "#55BC8D",
+          "#95DDB9",
+          "#CBFCE2"
+        ]
+      },
+      "track-blue": {
+        "role": "primary",
+        "displayName": "Track Blue",
+        "canonical": "#6AA8FF",
+        "oklch": "oklch(72.7% 0.143 257.1)",
+        "tonalRamp": [
+          "#030B1A",
+          "#0F2441",
+          "#1F406D",
+          "#305D9D",
+          "#4480D4",
+          "#76A6EB",
+          "#A7CDFF",
+          "#D6F1FF"
+        ]
+      },
+      "cream-wash": {
+        "role": "neutral",
+        "displayName": "Cream Wash",
+        "canonical": "rgba(244,239,230,0.06)",
+        "tonalRamp": []
+      },
+      "pitch-on": {
+        "role": "secondary",
+        "displayName": "Pitch Lime",
+        "canonical": "#9CF06A",
+        "tonalRamp": [],
+        "purpose": "Pitch grading only: On pitch."
+      },
+      "pitch-near": {
+        "role": "secondary",
+        "displayName": "Pitch Lemon",
+        "canonical": "#FFE45C",
+        "tonalRamp": [],
+        "purpose": "Pitch grading only: Close."
+      },
+      "pitch-off": {
+        "role": "secondary",
+        "displayName": "Pitch Red",
+        "canonical": "#FF4D4D",
+        "tonalRamp": [],
+        "purpose": "Pitch grading only: Off."
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Wordmark",
+        "purpose": "The 4-TRACK logo only."
+      },
+      "headline": {
+        "displayName": "Song title",
+        "purpose": "Screen title (song name)."
+      },
+      "counter": {
+        "displayName": "Tape counter",
+        "purpose": "bar.beat position readout."
+      },
+      "option": {
+        "displayName": "Option name",
+        "purpose": "Current harmony/counter option in a picker."
+      },
+      "title": {
+        "displayName": "Voice name",
+        "purpose": "Track row names."
+      },
+      "label": {
+        "displayName": "Key label",
+        "purpose": "Primary button text."
+      },
+      "control": {
+        "displayName": "Chip letter",
+        "purpose": "M / S chips."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Default reading text."
+      },
+      "meta": {
+        "displayName": "Meta",
+        "purpose": "Singer names, song details, descriptions."
+      },
+      "tab": {
+        "displayName": "Tab label",
+        "purpose": "Tab bar labels."
+      }
+    },
+    "shadows": [
+      {
+        "name": "key-edge",
+        "value": "inset 0 -4px 0 #C9C1B3",
+        "purpose": "Bottom edge of a resting cream key."
+      },
+      {
+        "name": "key-edge-active",
+        "value": "inset 0 -4px 0 #C98E1C",
+        "purpose": "Bottom edge of the amber (playing) key."
+      },
+      {
+        "name": "note-bevel",
+        "value": "inset 0 -2px 0 rgba(0,0,0,.25)",
+        "purpose": "8-bit bevel under piano-roll note blocks."
+      }
+    ],
+    "motion": [
+      {
+        "name": "key-press",
+        "value": "transform .08s ease-out; translateY(2px)",
+        "purpose": "Raised keys pressing down."
+      },
+      {
+        "name": "state-fade",
+        "value": "opacity .25s ease-out",
+        "purpose": "Notes dimming when a voice is muted or not soloed."
+      },
+      {
+        "name": "row-tint",
+        "value": "background .2s ease-out, color .2s ease-out",
+        "purpose": "Track rows switching between colour and off."
+      },
+      {
+        "name": "toast",
+        "value": "opacity .2s ease-out, transform .2s ease-out (8px rise)",
+        "purpose": "Confirmation toasts."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "all transitions off",
+        "purpose": "prefers-reduced-motion: reduce."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "phone",
+        "value": "430px",
+        "purpose": "At or below: full-bleed column, no device frame."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one raised cream key per screen; its label names the result.",
+      "html": "<button class=\"ds-btn-primary\">KEEP 3RDS FOR MAYA</button>",
+      "css": ":host{--ink:#15131F;--deep:#1D1A2B;--text:#F4EFE6;--muted:#A8A3BC;--t1:#FF6B5B;--t2:#FFBE3D;--t3:#4FDBA0;--t4:#6AA8FF;--cream:#F4EFE6;--cream-edge:#C9C1B3;--px:'Jersey 15',ui-monospace,monospace;--ui:-apple-system,BlinkMacSystemFont,'SF Pro Text',system-ui,sans-serif}.ds-btn-primary{width:320px;height:52px;border:0;border-radius:6px;background:var(--cream);color:var(--ink);font:400 22px var(--px);letter-spacing:.04em;box-shadow:inset 0 -4px 0 var(--cream-edge);cursor:pointer;transition:transform .08s ease-out}.ds-btn-primary:active{transform:translateY(2px)}.ds-btn-primary:focus-visible{outline:2px solid var(--text);outline-offset:2px}"
+    },
+    {
+      "name": "Play Key",
+      "kind": "button",
+      "refersTo": "button-play",
+      "description": "Small raised key; amber while playing.",
+      "html": "<button class=\"ds-play\" aria-label=\"Play\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 14 14\" fill=\"currentColor\" shape-rendering=\"crispEdges\"><rect x=\"2\" y=\"1\" width=\"2\" height=\"12\"/><rect x=\"4\" y=\"3\" width=\"2\" height=\"8\"/><rect x=\"6\" y=\"4\" width=\"2\" height=\"6\"/><rect x=\"8\" y=\"5\" width=\"2\" height=\"4\"/><rect x=\"10\" y=\"6\" width=\"2\" height=\"2\"/></svg></button> <button class=\"ds-play on\" aria-label=\"Pause\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 14 14\" fill=\"currentColor\" shape-rendering=\"crispEdges\"><rect x=\"2\" y=\"1\" width=\"2\" height=\"12\"/><rect x=\"4\" y=\"3\" width=\"2\" height=\"8\"/><rect x=\"6\" y=\"4\" width=\"2\" height=\"6\"/><rect x=\"8\" y=\"5\" width=\"2\" height=\"4\"/><rect x=\"10\" y=\"6\" width=\"2\" height=\"2\"/></svg></button>",
+      "css": ":host{--ink:#15131F;--deep:#1D1A2B;--text:#F4EFE6;--muted:#A8A3BC;--t1:#FF6B5B;--t2:#FFBE3D;--t3:#4FDBA0;--t4:#6AA8FF;--cream:#F4EFE6;--cream-edge:#C9C1B3;--px:'Jersey 15',ui-monospace,monospace;--ui:-apple-system,BlinkMacSystemFont,'SF Pro Text',system-ui,sans-serif}.ds-play{width:46px;height:42px;border:0;border-radius:4px;display:inline-grid;place-items:center;background:var(--cream);color:var(--ink);box-shadow:inset 0 -4px 0 var(--cream-edge);cursor:pointer;transition:transform .08s ease-out}.ds-play.on{background:var(--t2);box-shadow:inset 0 -4px 0 #C98E1C}.ds-play:active{transform:translateY(2px)}.ds-play:focus-visible{outline:2px solid var(--text);outline-offset:2px}"
+    },
+    {
+      "name": "Track Row",
+      "kind": "custom",
+      "refersTo": "track-row",
+      "description": "A voice as a solid colour block with soft M/S chips; dark when off.",
+      "html": "<div class=\"ds-wrap\"><div class=\"ds-trk\" style=\"background:#FF6B5B\"><span class=\"ds-nm\">Melody<small>Priya</small></span><button class=\"ds-ms\">M</button><button class=\"ds-ms\">S</button></div><div class=\"ds-trk\" style=\"background:#4FDBA0\"><span class=\"ds-nm\">Tenor<small>Jordan</small></span><button class=\"ds-ms\">M</button><button class=\"ds-ms on\">S</button></div><div class=\"ds-trk off\"><span class=\"ds-nm\">Alto<small>Maya · muted by solo</small></span><button class=\"ds-ms\">M</button><button class=\"ds-ms\">S</button></div></div>",
+      "css": ":host{--ink:#15131F;--deep:#1D1A2B;--text:#F4EFE6;--muted:#A8A3BC;--t1:#FF6B5B;--t2:#FFBE3D;--t3:#4FDBA0;--t4:#6AA8FF;--cream:#F4EFE6;--cream-edge:#C9C1B3;--px:'Jersey 15',ui-monospace,monospace;--ui:-apple-system,BlinkMacSystemFont,'SF Pro Text',system-ui,sans-serif}.ds-wrap{display:grid;gap:8px;width:340px;background:var(--ink);padding:12px}.ds-trk{display:flex;align-items:center;gap:6px;min-height:58px;padding:8px 10px 8px 16px;border-radius:10px;color:var(--ink)}.ds-trk.off{background:var(--deep)!important;color:var(--muted)}.ds-nm{flex:1;font:400 23px/1 var(--px)}.ds-nm small{display:block;font:500 13px/1.3 var(--ui);opacity:.84}.ds-ms{width:38px;height:38px;border:0;border-radius:8px;background:rgba(21,19,31,.1);color:inherit;font:400 20px var(--px);cursor:pointer}.ds-ms:hover{background:rgba(21,19,31,.18)}.ds-ms.on{background:var(--ink);color:var(--text)}.ds-trk.off .ds-ms{background:rgba(255,255,255,.06)}.ds-ms:focus-visible{outline:2px solid var(--text);outline-offset:2px}"
+    },
+    {
+      "name": "Harmony Picker",
+      "kind": "custom",
+      "refersTo": "track-row",
+      "description": "The row being arranged, expanded with arrows, option name, and position dots.",
+      "html": "<div class=\"ds-pk\"><div class=\"ds-pk-h\">Alto<small>Maya</small></div><div class=\"ds-pk-b\"><button class=\"ds-ar\" aria-label=\"Previous\">‹</button><div class=\"ds-mid\"><b>PARALLEL 3RDS</b><span>Warm, classic pop · easy</span><i class=\"ds-dots\"><i class=\"on\"></i><i></i><i></i><i></i></i></div><button class=\"ds-ar\" aria-label=\"Next\">›</button></div></div>",
+      "css": ":host{--ink:#15131F;--deep:#1D1A2B;--text:#F4EFE6;--muted:#A8A3BC;--t1:#FF6B5B;--t2:#FFBE3D;--t3:#4FDBA0;--t4:#6AA8FF;--cream:#F4EFE6;--cream-edge:#C9C1B3;--px:'Jersey 15',ui-monospace,monospace;--ui:-apple-system,BlinkMacSystemFont,'SF Pro Text',system-ui,sans-serif}.ds-pk{width:340px;background:var(--t2);color:var(--ink);border-radius:10px;padding:8px 6px}.ds-pk-h{font:400 23px/1 var(--px);padding:4px 10px 10px}.ds-pk-h small{display:block;font:500 13px var(--ui);opacity:.84}.ds-pk-b{display:grid;grid-template-columns:44px 1fr 44px;align-items:center;border-top:1.5px solid rgba(21,19,31,.12);padding-top:10px}.ds-ar{height:44px;border:0;border-radius:8px;background:none;font:400 26px var(--px);color:var(--ink);cursor:pointer}.ds-ar:hover{background:rgba(21,19,31,.1)}.ds-mid{text-align:center}.ds-mid b{display:block;font:400 26px/1 var(--px);letter-spacing:.04em;font-weight:400}.ds-mid span{display:block;font:13px var(--ui);opacity:.84}.ds-dots{display:flex;gap:5px;justify-content:center;margin-top:7px}.ds-dots i{width:6px;height:6px;background:rgba(21,19,31,.22)}.ds-dots i.on{background:var(--ink)}"
+    },
+    {
+      "name": "Empty Track Slot",
+      "kind": "custom",
+      "refersTo": "track-empty",
+      "description": "Dashed outline in the slot's track colour.",
+      "html": "<button class=\"ds-empty\"><span>Add bass<small>for Sam</small></span>+</button>",
+      "css": ":host{--ink:#15131F;--deep:#1D1A2B;--text:#F4EFE6;--muted:#A8A3BC;--t1:#FF6B5B;--t2:#FFBE3D;--t3:#4FDBA0;--t4:#6AA8FF;--cream:#F4EFE6;--cream-edge:#C9C1B3;--px:'Jersey 15',ui-monospace,monospace;--ui:-apple-system,BlinkMacSystemFont,'SF Pro Text',system-ui,sans-serif}.ds-empty{display:flex;align-items:center;justify-content:space-between;width:340px;min-height:58px;padding:0 16px;border-radius:10px;border:2px dashed rgba(106,168,255,.55);background:var(--ink);color:var(--t4);font:400 26px var(--px);text-align:left;cursor:pointer}.ds-empty span{font:400 23px/1 var(--px)}.ds-empty small{display:block;font:500 13px var(--ui);opacity:.8}.ds-empty:hover{border-color:var(--t4)}"
+    },
+    {
+      "name": "Tape Counter",
+      "kind": "custom",
+      "refersTo": "tape-counter",
+      "description": "Amber bar.beat readout in a recessed well.",
+      "html": "<div class=\"ds-ctr\">01.3</div>",
+      "css": ":host{--ink:#15131F;--deep:#1D1A2B;--text:#F4EFE6;--muted:#A8A3BC;--t1:#FF6B5B;--t2:#FFBE3D;--t3:#4FDBA0;--t4:#6AA8FF;--cream:#F4EFE6;--cream-edge:#C9C1B3;--px:'Jersey 15',ui-monospace,monospace;--ui:-apple-system,BlinkMacSystemFont,'SF Pro Text',system-ui,sans-serif}.ds-ctr{display:inline-block;background:#0C0B13;color:var(--t2);font:400 30px/1 var(--px);letter-spacing:.06em;font-variant-numeric:tabular-nums;padding:3px 10px 1px;border-radius:4px;min-width:68px;text-align:center}"
+    },
+    {
+      "name": "Tab Bar",
+      "kind": "nav",
+      "refersTo": "",
+      "description": "Borderless; current tab has a cream label and amber pixel icon.",
+      "html": "<nav class=\"ds-tabs\"><a>Record</a><a class=\"on\" aria-current=\"page\">Arrange</a><a>Parts</a><a>Practice</a></nav>",
+      "css": ":host{--ink:#15131F;--deep:#1D1A2B;--text:#F4EFE6;--muted:#A8A3BC;--t1:#FF6B5B;--t2:#FFBE3D;--t3:#4FDBA0;--t4:#6AA8FF;--cream:#F4EFE6;--cream-edge:#C9C1B3;--px:'Jersey 15',ui-monospace,monospace;--ui:-apple-system,BlinkMacSystemFont,'SF Pro Text',system-ui,sans-serif}.ds-tabs{display:flex;justify-content:space-around;width:360px;background:var(--ink);padding:10px 0}.ds-tabs a{display:grid;justify-items:center;gap:5px;font:600 11px var(--ui);color:var(--muted);cursor:pointer}.ds-tabs a::before{content:'';width:22px;height:4px;background:currentColor}.ds-tabs a.on{color:var(--text)}.ds-tabs a.on::before{background:var(--t2)}.ds-tabs a:hover{color:var(--text)}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Bedroom Portastudio",
+    "overview": "4-Track looks like a home four-track cassette recorder on a desk at night: a dark deck, a glowing tape counter, and four coloured channels, one per voice. The 8-bit layer (Jersey 15 pixel type, square note blocks) makes it playful without turning it into a game. Everything that isn't a voice stays dark and quiet, so colour always means a part someone sings.\n\nDensity is calm. One layered mix sits on top, the four voices sit below as solid colour blocks, and there is one obvious next action. Labels that restate what the layout already shows are left out. Controls are flat and soft. Only the main action (and the play key) is a raised cream key that presses down.",
+    "keyCharacteristics": [
+      "Dark ink-blue deck; colour is reserved for the four voices.",
+      "Each voice owns one colour everywhere: its row, its notes in the mix, its lane in future screens.",
+      "Jersey 15 for every pixel voice; the system sans for small reading text.",
+      "Flat, soft controls; one raised cream key for the primary action.",
+      "Square 8-bit note blocks with a darker bottom bevel."
+    ],
+    "rules": [
+      {
+        "name": "The Four Voices Rule",
+        "body": "Coral, amber, mint, and blue mean tracks 1–4 and nothing else. Never use a track colour for decoration, a status, or a generic accent; if it's coloured, someone sings it.",
+        "section": "colors"
+      },
+      {
+        "name": "The Ink-On-Colour Rule",
+        "body": "Text on a colour block is always ink. Secondary text on colour uses ink at 84% opacity (5.2:1 on coral, the weakest pair); never lower.",
+        "section": "colors"
+      },
+      {
+        "name": "The Accuracy Exception",
+        "body": "Pitch Lime, Lemon, and Red exist only to grade a singer's pitch, on the Practice screen and in its results. They never mark a voice, and voices never use them. On those screens the target notes stay neutral (cream outlines), so a voice colour and an accuracy colour never sit side by side. Every accuracy colour is paired with words (\"On pitch\", \"Close · flat\").",
+        "section": "colors"
+      },
+      {
+        "name": "The One Pixel Face Rule",
+        "body": "Every pixel-style word is Jersey 15. No second pixel font, ever; mixing pixel faces is what made earlier versions look busy.",
+        "section": "typography"
+      },
+      {
+        "name": "The Readable Floor Rule",
+        "body": "Anything under 16px is set in the system sans, never the pixel face. Nothing functional goes below 11px.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat Deck Rule",
+        "body": "Panels and rows never get drop shadows. Only pressable keys get the bottom edge.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** give every voice exactly one track colour and reuse it everywhere that voice appears.",
+      "**Do** set every pixel-style word in Jersey 15, and everything under 16px in the system sans.",
+      "**Do** keep one cream raised key per screen for the main action, and name the result in its label.",
+      "**Do** dim, rather than hide, voices that are muted or not soloed, so the arranger keeps the context.",
+      "**Do** draw icons as pixel SVGs in one stroke weight."
+    ],
+    "donts": [
+      "**Don't** use a track colour for anything that isn't a voice, or an accuracy colour for anything that isn't pitch grading.",
+      "**Don't** add a second pixel font, or set pixel type below 16px.",
+      "**Don't** add borders, drop shadows, or labels that restate what the layout already shows.",
+      "**Don't** repeat the mix inside each track row; the mix card is the only piano roll on the arranging screen.",
+      "**Don't** put secondary text on a colour block below 84% ink."
+    ]
+  }
+}
