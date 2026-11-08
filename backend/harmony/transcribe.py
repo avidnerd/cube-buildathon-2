@@ -169,33 +169,42 @@ def absorb_ornaments(notes: list[RawNote]) -> list[RawNote]:
     """Fold scoops, slides and vibrato wobbles into the note they belong to.
 
     A singer sliding up into "I" produces E-F-E-F in 0.1 s chunks; as notes,
-    each would get its own harmony note and the harmony would twitch. Merged,
-    the harmony holds one note and (being the lead's voice re-pitched) still
-    follows the scoop naturally.
+    each would get its own harmony note and the harmony would twitch. A run of
+    consecutive short fragments is folded, as a whole, into the real note it
+    leads into (or trails off from). The harmony then holds one note and,
+    being the lead's voice re-pitched, still follows the scoop naturally.
     """
-    notes = list(notes)
-    changed = True
-    while changed:
-        changed = False
-        for i, n in enumerate(notes):
-            if n.t1 - n.t0 >= ORNAMENT_S:
-                continue
-            cands = []
-            for j in (i - 1, i + 1):
-                if 0 <= j < len(notes):
-                    o = notes[j]
-                    gap = (n.t0 - o.t1) if j < i else (o.t0 - n.t1)
-                    if gap < 0.06 and abs(o.pitch - n.pitch) <= ORNAMENT_SEMITONES:
-                        cands.append(j)
-            if not cands:
-                continue
-            j = max(cands, key=lambda k: notes[k].t1 - notes[k].t0)
-            o = notes[j]
-            notes[j] = RawNote(min(o.t0, n.t0), max(o.t1, n.t1), o.pitch, o.midi)
-            del notes[i]
-            changed = True
-            break
-    return notes
+    def short(n):
+        return n.t1 - n.t0 < ORNAMENT_S
+
+    def touching(a, b):
+        return b.t0 - a.t1 < 0.06
+
+    out = list(notes)
+    i = 0
+    while i < len(out):
+        if not short(out[i]):
+            i += 1
+            continue
+        j = i  # extend the run of touching short fragments
+        while j + 1 < len(out) and short(out[j + 1]) and touching(out[j], out[j + 1]):
+            j += 1
+        run = out[i: j + 1]
+        near = lambda n: min(abs(n.pitch - r.pitch) for r in run) <= ORNAMENT_SEMITONES  # noqa: E731
+        nxt = out[j + 1] if j + 1 < len(out) and touching(out[j], out[j + 1]) and near(out[j + 1]) else None
+        prv = out[i - 1] if i > 0 and touching(out[i - 1], out[i]) and near(out[i - 1]) else None
+        host = nxt if nxt is not None and (prv is None or nxt.t1 - nxt.t0 >= prv.t1 - prv.t0) else prv
+        if host is None:
+            i = j + 1
+            continue
+        merged = RawNote(min(host.t0, run[0].t0), max(host.t1, run[-1].t1), host.pitch, host.midi)
+        if host is nxt:
+            out[i: j + 2] = [merged]
+        else:
+            out[i - 1: j + 1] = [merged]
+            i -= 1
+        i += 1
+    return out
 
 
 def _short_rms(x: np.ndarray, sr: int, times: np.ndarray, win_s: float = 0.016) -> np.ndarray:
