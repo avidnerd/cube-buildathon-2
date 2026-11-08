@@ -68,7 +68,7 @@ def test_scale_melody_gets_a_smooth_consonant_line(side, target):
     assert max(leaps) <= 5, leaps                                        # a singable line (a 4th at most)
     chords = [I_IV_V_I(0.5 * (m["t0"] + m["t1"])) for m in mel]
     on_tones = sum(h["pitch"] % 12 in c.tones for h, c in zip(part, chords))
-    assert on_tones >= 6, [h["pitch"] for h in part]                     # consonant with the harmony
+    assert on_tones >= 4, [h["pitch"] for h in part]                     # a scale in parallel passes through non-chord notes
 
 
 def test_follows_the_real_band_even_with_wrong_chord_labels():
@@ -251,3 +251,13 @@ def test_denoise_and_polish_keep_the_voice():
     assert np.corrcoef(d[mid], clean[mid])[0, 1] > 0.95                  # the voice is untouched
     p = polish(d, SR)
     assert len(p) == len(d) and np.max(np.abs(p)) <= np.max(np.abs(d)) + 1e-9
+
+
+def test_harmony_moves_with_a_stepwise_run():
+    """The melody climbs by step; the harmony may not sit still or go the other way."""
+    mel = melody_notes([57, 59, 61, 62, 61, 59, 59, 64, 66, 68, 69])
+    for side, target in ((+1, 3.5), (-1, 5.0)):
+        part = plan_part(mel, lambda t: parse_chord("A"), (9, "major"), VOICE, side, target)
+        for k in (1, 2, 3, 4, 5, 8, 9, 10):
+            step = mel[k]["pitch"] - mel[k - 1]["pitch"]
+            assert (part[k]["pitch"] - part[k - 1]["pitch"]) * step > 0, ([h["pitch"] for h in part], k)

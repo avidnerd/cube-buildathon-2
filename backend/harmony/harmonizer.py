@@ -112,7 +112,7 @@ EDGE_FEATURES = (
 FROZEN = frozenset({"clash", "band_support", "step_clash", "tritone", "wrong_side", "comfort"})
 
 DEFAULT_WEIGHTS: dict[str, float] = {
-    "clash": 8.0, "clash_guess": 1.5, "band_support": -2.5, "chord_tone": -0.3, "chord_tone_held": -1.0, "in_key": -0.3, "out_of_key": 0.6,
+    "clash": 8.0, "clash_guess": 1.5, "band_support": -2.5, "chord_tone": -0.3, "chord_tone_held": -1.0, "in_key": -0.3, "out_of_key": 9.0,
     "dist_target": 0.15, "unison": 2.0, "unison_low": -0.8, "unison_start": -0.6, "octave_double": 1.2,
     "third_sixth": -0.5, "fourth_fifth": 0.0, "diatonic_third": -0.6, "step_clash": 3.0, "tritone": 2.5,
     "wrong_side": 4.0, "comfort": 1.0, "part_double": 2.0, "part_rub": 1.5, "completes_triad": -1.5,
@@ -340,13 +340,15 @@ def _node_cost(lat: Lattice, i: int, wn: np.ndarray, wd: np.ndarray) -> np.ndarr
     return lat.node[i] @ wn + wd[lat.deg[i]]  # index -1 hits the trailing 0
 
 
-def decode(lat: Lattice, w: dict[str, float]) -> list[int]:
-    """Viterbi: index of the chosen candidate per note."""
+def decode(lat: Lattice, w: dict[str, float], edge_extra=None) -> list[int]:
+    """Viterbi: index of the chosen candidate per note. edge_extra(i): extra *score* per move."""
     wn, wd, we = _vectors(w)
     acc = _node_cost(lat, 0, wn, wd)
     back = []
     for i in range(1, len(lat.cands)):
-        total = acc[:, None] + lat.edge[i - 1] @ we
+        total = acc[:, None] + lat.edge[i - 1].astype(np.float32) @ we
+        if edge_extra is not None:
+            total = total - edge_extra(i)
         back.append(np.argmin(total, axis=0))
         acc = total.min(axis=0) + _node_cost(lat, i, wn, wd)
     j = int(np.argmin(acc))
@@ -390,7 +392,7 @@ def plan_part(
     if not melody:
         return []
     net = None
-    if weights is None:  # the learned model, if trained (with the user's personal adjustment)
+    if weights is None and USE_LEARNED_MODEL:  # the learned model, if trained (with the user's personal adjustment)
         from backend.harmony import neural
 
         net = neural.base_model()
@@ -402,9 +404,9 @@ def plan_part(
         # goes below the lead (unison allowed), a lower part never above it.
         # personal: this song's adjustments from the user's fixes (never applied to other songs)
         path = net.decode(lat, bias=neural.personal_bias(lat, personal),  # includes the side rule
-                          edge_bias=follow_melody_bias())
+                          edge_bias=follow_melody_bias(), edge_extra=stepwise_run_rule(melody, lat))
     else:
-        path = decode(lat, weights or load_style())
+        path = decode(lat, weights or load_style(), edge_extra=stepwise_run_rule(melody, lat) if RUN_RULE else None)
     out = []
     for n, opts, j in zip(melody, lat.cands, path):
         out.append({
@@ -425,7 +427,6 @@ def plan_parts(melody, chord_at, key, voice, arrangement: str = "classic",
 
         return plan_satb(melody, chord_at, key, "tenor" if arrangement == "satb_tenor" else "soprano")
     arr = ARRANGEMENTS[arrangement]
-    weights = weights or load_style()
     if scene_for is not None:  # measure each note's scene once for all parts
         cache = {id(n): scene_for(n) for n in melody}
         scene_for = lambda n, _c=cache: _c[id(n)]  # noqa: E731
@@ -445,6 +446,42 @@ RUN_JOIN_S = 0.06
 # motion weights (scores: positive = preferred).
 FOLLOW_STATIC = 3.0     # penalty for holding while the lead moves
 FOLLOW_PARALLEL = 1.5   # reward for keeping the same scale interval to the lead
+
+
+# Off: on real a cappella takes the learned model fit the songs' real chords worse
+# and clashed with the lead more (64-75% / 6-9%) than the hand-weighted scorer
+# with the stepwise rule (76-81% / 0%), despite scoring well on held-out MIDI.
+USE_LEARNED_MODEL = False
+RUN_RULE = True
+RUN_HOLD = 8.0          # holding still during a stepwise run in the melody
+RUN_AGAINST = 3.0       # moving the opposite way during one
+RUN_WITH = 1.5          # moving the same way
+
+
+def stepwise_run_rule(melody: Sequence[dict], lat: Lattice):
+    """When the tune climbs or falls by step, the harmony goes with it.
+
+    Repeated notes don't break a run. Returns score(i) -> (C_prev, C), or zero
+    outside runs (where common tones are fine).
+    """
+    p = [int(n["pitch"]) for n in melody]
+
+    def neighbour(k, step):
+        j = k + step
+        while 0 < j < len(p):
+            if p[j] != p[j - 1]:
+                return p[j] - p[j - 1]
+            j += step
+        return 0
+
+    def score(i):
+        d = p[i] - p[i - 1]
+        if d == 0 or abs(d) > 2 or (neighbour(i, -1) * d <= 0 and neighbour(i, 1) * d <= 0):
+            return 0.0
+        move = lat.cands[i][None, :] - lat.cands[i - 1][:, None]
+        return -RUN_HOLD * (move == 0) - RUN_AGAINST * (move * d < 0) + RUN_WITH * (move * d > 0)
+
+    return score
 
 
 def follow_melody_bias() -> np.ndarray:

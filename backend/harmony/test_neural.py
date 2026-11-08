@@ -46,6 +46,8 @@ def test_personal_layer_only_for_its_song(tmp_path, monkeypatch):
     from backend.harmony.playground import server
     monkeypatch.setattr(server, "FEEDBACK_DIR", tmp_path)
     monkeypatch.setattr(NN, "base_model", lambda: _tiny_net())
+    from backend.harmony import harmonizer as H
+    monkeypatch.setattr(H, "USE_LEARNED_MODEL", True)
     mine, other = _melody([60, 62, 64, 65, 67]), _melody([67, 64, 60, 62, 55])
     server._personal_path(NN.song_fingerprint(mine)).write_text('{"node": {}, "deg": {}}')
     assert server._song_personal(mine) is not None
@@ -62,6 +64,7 @@ def test_trained_model_moves_with_the_melody(monkeypatch):
     if not real.exists():
         pytest.skip("no trained model")
     monkeypatch.setattr(NN, "MODEL_PATH", real)
+    monkeypatch.setattr(H, "USE_LEARNED_MODEL", True)
     NN._cached.clear()
     mel = [{"pitch": p, "t0": 0.4 * i, "t1": 0.4 * i + 0.35} for i, p in enumerate([60, 62, 64, 65, 67, 65, 64, 62, 60, 64, 67, 72])]
     chords = lambda t: parse_chord(["C", "C", "F", "G"][min(3, int(t / 1.2))])

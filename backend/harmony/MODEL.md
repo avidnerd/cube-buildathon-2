@@ -1,6 +1,8 @@
 # Harmony model card
 
-`harmony_net.npz` is the learned scorer used by the studio to choose harmony
+> **Status: not used by the studio** (`harmonizer.USE_LEARNED_MODEL = False`). The numbers below are from held-out MIDI. On real a cappella takes it fit the songs' chords worse and clashed with the lead more than the hand-weighted scorer plus the stepwise rule. An earlier bug also meant the studio never ran it, so the "on your take" figures describe offline evaluation only.
+
+`harmony_net.npz` is a learned scorer for choosing harmony
 notes (`neural.py`, decoded as a CRF over the note lattice in `harmonizer.py`).
 It runs in plain numpy; training uses PyTorch.
 

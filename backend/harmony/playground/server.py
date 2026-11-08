@@ -453,7 +453,9 @@ def _song_personal(notes) -> dict | None:
     """This song's adjustments learned from the user's fixes, if any."""
     from backend.harmony import neural
 
-    if not notes or neural.base_model() is None:
+    from backend.harmony.harmonizer import USE_LEARNED_MODEL
+
+    if not notes or not USE_LEARNED_MODEL or neural.base_model() is None:
         return None
     p = _personal_path(neural.song_fingerprint(notes))
     try:
@@ -564,8 +566,10 @@ def api_style(song: str | None = None, reset: bool = False) -> dict:
         for p in targets + [STYLE_PATH, neural.PERSONAL_PATH]:
             if p.exists():
                 p.unlink()
-    net = neural.base_model()
-    base = (f"harmony learned from {net.meta.get('songs', '?')} real arrangements" if net is not None else "hand-set rules")
+    from backend.harmony.harmonizer import USE_LEARNED_MODEL
+
+    net = neural.base_model() if USE_LEARNED_MODEL else None
+    base = (f"harmony learned from {net.meta.get('songs', '?')} real arrangements" if net is not None else "hand-weighted harmony rules")
     if song and _personal_path(song).exists():
         note = json.loads(_personal_path(song).read_text()).get("note", "")
         return {"learned": True, "note": f"{base} + {note}"}
