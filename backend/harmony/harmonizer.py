@@ -396,7 +396,8 @@ def plan_part(
         # The arrangement's side is a rule, not a preference: an upper part never
         # goes below the lead (unison allowed), a lower part never above it.
         # personal: this song's adjustments from the user's fixes (never applied to other songs)
-        path = net.decode(lat, bias=neural.personal_bias(lat, personal))  # includes the side rule
+        path = net.decode(lat, bias=neural.personal_bias(lat, personal),  # includes the side rule
+                          edge_bias=follow_melody_bias())
     else:
         path = decode(lat, weights or load_style())
     out = []
@@ -426,8 +427,22 @@ def plan_parts(melody, chord_at, key, voice, arrangement: str = "classic",
     return out
 
 
-RUN_NOTE_S = 0.2    # notes shorter than this, joined to a neighbour, are embellishments
+RUN_NOTE_S = 0.11   # notes shorter than this, joined to a neighbour, are grace notes (real melody notes are longer)
 RUN_JOIN_S = 0.06
+
+
+# Move with the melody: a harmony that parks on one note while the tune moves
+# doesn't sound like it's singing *with* the lead. Added on top of the learned
+# motion weights (scores: positive = preferred).
+FOLLOW_STATIC = 3.0     # penalty for holding while the lead moves
+FOLLOW_PARALLEL = 1.5   # reward for keeping the same scale interval to the lead
+
+
+def follow_melody_bias() -> np.ndarray:
+    b = np.zeros(len(EDGE_FEATURES), dtype=np.float32)
+    b[EDGE_FEATURES.index("static")] = -FOLLOW_STATIC
+    b[EDGE_FEATURES.index("same_interval")] = FOLLOW_PARALLEL
+    return b
 
 
 def mirror_runs(melody: Sequence[dict], part: list[dict]) -> list[dict]:

@@ -183,16 +183,18 @@ class NetScorer:
                 h = np.maximum(h, 0.0)
         return h[:, 0]
 
-    def decode(self, lat: Lattice, bias=None) -> list[int]:
-        """Best line (max score). bias(i) -> (C,) optional extra score per candidate."""
+    def decode(self, lat: Lattice, bias=None, edge_bias: np.ndarray | None = None) -> list[int]:
+        """Best line (max score). bias(i) -> (C,) optional extra score per candidate;
+        edge_bias: extra weights on the edge features (added to the learned ones)."""
         def node(i):
             s = self.node_scores(lat, i)
             return s + bias(i) if bias is not None else s
 
+        ew = self.edge_w if edge_bias is None else self.edge_w + edge_bias
         acc = node(0)
         back = []
         for i in range(1, len(lat.cands)):
-            total = acc[:, None] + lat.edge[i - 1].astype(np.float32) @ self.edge_w
+            total = acc[:, None] + lat.edge[i - 1].astype(np.float32) @ ew
             back.append(np.argmax(total, axis=0))
             acc = total.max(axis=0) + node(i)
         j = int(np.argmax(acc))

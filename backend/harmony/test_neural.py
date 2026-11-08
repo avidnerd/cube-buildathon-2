@@ -50,3 +50,23 @@ def test_personal_layer_only_for_its_song(tmp_path, monkeypatch):
     server._personal_path(NN.song_fingerprint(mine)).write_text('{"node": {}, "deg": {}}')
     assert server._song_personal(mine) is not None
     assert server._song_personal(other) is None
+
+
+def test_trained_model_moves_with_the_melody(monkeypatch):
+    """With the real trained model: over a stepwise melody, the harmony moves too
+    (it used to park on one note while the tune went on)."""
+    from pathlib import Path
+    import pytest
+    from backend.harmony import harmonizer as H
+    real = Path(H.__file__).with_name("harmony_net.npz")
+    if not real.exists():
+        pytest.skip("no trained model")
+    monkeypatch.setattr(NN, "MODEL_PATH", real)
+    NN._cached.clear()
+    mel = [{"pitch": p, "t0": 0.4 * i, "t1": 0.4 * i + 0.35} for i, p in enumerate([60, 62, 64, 65, 67, 65, 64, 62, 60, 64, 67, 72])]
+    chords = lambda t: parse_chord(["C", "C", "F", "G"][min(3, int(t / 1.2))])
+    for side, target in ((+1, 3.5), (-1, 5.0)):
+        part = H.plan_part(mel, chords, (0, "major"), (45, 84, 48, 80), side, target)
+        holds = sum(a["pitch"] == b["pitch"] for a, b in zip(part, part[1:]))
+        assert holds <= 3, [h["pitch"] for h in part]
+    NN._cached.clear()
