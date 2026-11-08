@@ -154,3 +154,17 @@ def test_slid_step_inside_one_note_is_split():
     midi[38:44] = np.linspace(60, 59, 6)
     out = split_level_changes([RawNote(0.0, 0.8, 60, 59.5)], times, midi)
     assert [n.pitch for n in out] == [60, 59]
+
+
+@pytest.mark.parametrize("bpm", [72, 96, 112])
+def test_tempo_does_not_depend_on_where_the_recording_starts(bpm):
+    """Same singing, shifted by a few ms: the same tempo and beats (it used to jump between frame-rounded values)."""
+    from backend.harmony.beats import beats_from_onsets
+    rng = np.random.default_rng(bpm)
+    onsets = np.cumsum(rng.choice([1, 1, 2, 0.5], 40)) * 60 / bpm + rng.normal(0, 0.02, 40)
+    onsets = np.sort(onsets) + 0.5
+    base = beats_from_onsets(onsets)
+    for shift in (0.013, 0.037, 0.113, 0.251):
+        g = beats_from_onsets(onsets + shift)
+        assert g.bpm == pytest.approx(base.bpm, abs=0.5)
+        assert g.times[:20] - shift == pytest.approx(base.times[:20], abs=0.02)

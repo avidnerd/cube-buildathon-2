@@ -58,6 +58,8 @@ DEFAULT_PORT = 8765
 MAX_AUDIO_SECONDS = 600
 PITCH_SR = 16000
 
+KEY_TIE = 0.015  # relative major/minor readings within 1.5% of each other count as a tie
+
 # (name, lens palette, minimum novelty) for the three options.
 FLAVOURS = (
     ("Plain", {}, 0.0),
@@ -348,39 +350,55 @@ def api_options(req: dict) -> dict:
     bpb = int(req.get("beats_per_bar", 4))
     ce = req.get("chord_every", "bar")
     every = bpb if ce in ("bar", None) else (int(ce) or None)   # default: one chord per bar
-    phase = 0
+    phase, song_key, alt = 0, None, None
     if every and every > 1 and not req.get("chords"):
-        # Beat 1 is where chord changes fit the melody best: try each position.
-        fits = [reharmonize(melody, None, 0.0, beats_per_bar=bpb, chord_every=every, phase=p, n_paths=1)[0].score
-                for p in range(every)]
-        phase = int(np.argmax(fits))
+        # Beat 1 is where chord changes fit the melody best, and a major key and
+        # its relative minor share all their notes, so let the fit decide both.
+        first = reharmonize(melody, None, 0.0, beats_per_bar=bpb, chord_every=every, n_paths=1)[0].key
+        t, m = first
+        relative = ((t + 9) % 12, "minor") if m == "major" else ((t + 3) % 12, "major")
+        fits = [(reharmonize(melody, None, 0.0, beats_per_bar=bpb, chord_every=every, phase=p, n_paths=1, key=k)[0].score, k, p)
+                for k in (first, relative) for p in range(every)]
+        # The key estimate decides the main reading. Fit only places beat 1 and spots
+        # a near-tie: it can't overrule the key, since minor chords "explain" major
+        # melodies too easily (Am7 covers C-E-G-A).
+        chosen = max((f for f in fits if f[1] == first), key=lambda x: x[0])
+        other = max((f for f in fits if f[1] == relative), key=lambda x: x[0])
+        _, song_key, phase = chosen
+        if abs(chosen[0] - other[0]) < KEY_TIE * abs(chosen[0]):
+            alt = other  # two readings almost equally good: offer both
     detected = req.get("chords")
     if detected:
         # The song's own chords are the starting point.
         base_chords, base_symbols = detected, list(detected)
     else:
         # A bare voice: the plain harmonization its melody implies.
-        base = reharmonize(melody, None, 0.0, beats_per_bar=bpb, chord_every=every, phase=phase)[0]
+        base = reharmonize(melody, None, 0.0, beats_per_bar=bpb, chord_every=every, phase=phase, key=song_key)[0]
         base_chords, base_symbols = base.chords, base.symbols
 
     locks = {int(k): v for k, v in (req.get("locks") or {}).items()}
     user_palette = req.get("palette") or {}
     user_novelty = float(req.get("novelty", 0))
     chosen, names = [], []
+    alt_base = None
+    if alt is not None and not detected:
+        alt_base = reharmonize(melody, None, 0.0, beats_per_bar=bpb, chord_every=every, phase=alt[2], key=alt[1])[0]
     for name, palette, novelty in FLAVOURS:
         option_locks = dict(locks)
+        use_alt = alt_base is not None and name == "Lush"
         if detected and name == "Plain":
             # A real song's Plain option is exactly its own chords: the reference
             # everything else is compared to. The user's own locks still win.
             option_locks = {t: c for t, c in enumerate(detected) if c != "N.C."} | locks
         cands = reharmonize(
-            melody, base_chords,
+            melody, alt_base.chords if use_alt else base_chords,
             novelty=max(novelty, user_novelty),
             palette={**palette, **user_palette},
             locks=option_locks or None,
             beats_per_bar=bpb,
             chord_every=every,
-            phase=phase,
+            phase=alt[2] if use_alt else phase,
+            key=alt[1] if use_alt else song_key,
         )
         fresh = [c for c in cands if all(c.symbols != o.symbols for o in chosen)]
         if fresh:

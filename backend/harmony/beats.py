@@ -164,31 +164,63 @@ def track_beats(samples: np.ndarray, sr: int, bpm_hint: float | None = None, bea
     return BeatGrid(np.concatenate([head, times, tail]), beats_per_bar)
 
 
+ONSET_SIGMA = 0.05      # seconds: how tightly sung notes sit on the beat
+TEMPO_PRIOR_OCTAVES = 0.9
+
+
+def fit_tempo(onsets: np.ndarray, weights: np.ndarray, lo: float = 50.0, hi: float = 170.0,
+              prior_bpm: float = 95.0) -> tuple[float, float]:
+    """(bpm, phase in seconds): the beat grid that best fits the exact note onsets.
+
+    Works on continuous times, so the result doesn't depend on analysis-frame
+    rounding, where the recording starts, or its sample rate. Each grid's
+    score is its onset hits minus the hits a grid that dense would get by
+    chance (otherwise the fastest tempo always wins), times a tempo prior.
+    """
+    t = onsets - onsets.min()
+    w = weights / weights.sum()
+    bpms = np.arange(lo, hi + 1e-9, 0.25)
+    best = (-np.inf, prior_bpm, 0.0)
+    for bpm in bpms:
+        period = 60.0 / bpm
+        phases = np.arange(0.0, period, min(ONSET_SIGMA / 2, period / 8))
+        d = (t[None, :] - phases[:, None] + period / 2) % period - period / 2
+        d2 = (t[None, :] - phases[:, None] + period / 4) % (period / 2) - period / 4  # half beats count a little
+        hit = np.exp(-0.5 * (d / ONSET_SIGMA) ** 2) + 0.3 * np.exp(-0.5 * (d2 / ONSET_SIGMA) ** 2)
+        chance = ONSET_SIGMA * np.sqrt(2 * np.pi) / period * 1.6
+        score = (hit @ w) - chance
+        prior = np.exp(-0.5 * (np.log2(bpm / prior_bpm) / TEMPO_PRIOR_OCTAVES) ** 2)
+        j = int(np.argmax(score))
+        if score[j] * prior > best[0]:
+            best = (float(score[j] * prior), float(bpm), float(phases[j]))
+    return best[1], best[2] + float(onsets.min())
+
+
 def beats_from_onsets(onsets: np.ndarray, weights: np.ndarray | None = None, end: float | None = None,
                       beats_per_bar: int = 4, prior_bpm: float = 95.0) -> BeatGrid:
     """Tempo and beats from note onsets alone (a voice with no click or band).
 
-    Builds a pulse train at the onsets (longer notes weigh more), then uses
-    the same tempo estimate + dynamic-programming beat placement as for audio.
+    The grid is fitted to the exact onset times (longer notes weigh more), then
+    follows the singer: each beat is nudged toward a nearby onset, so gradual
+    speeding up or slowing down is tracked without jumping.
     """
-    onsets = np.asarray(onsets, dtype=float)
+    onsets = np.sort(np.asarray(onsets, dtype=float))
     if len(onsets) < 4:
         return BeatGrid.constant(prior_bpm, float(onsets[0]) if len(onsets) else 0.0, beats_per_bar=beats_per_bar)
     w = np.ones_like(onsets) if weights is None else np.asarray(weights, dtype=float)
     end = float(end if end is not None else onsets.max() + 1.0)
-    n = int(end * FPS) + 2
-    env = np.zeros(n)
-    idx = np.clip((onsets * FPS).astype(int), 0, n - 1)
-    np.add.at(env, idx, w)
-    k = np.exp(-0.5 * (np.arange(-3, 4) / 1.2) ** 2)  # ~±70 ms smear: singers aren't on the grid
-    env = np.convolve(env, k / k.sum(), mode="same")
-    env = env / (env.std() or 1.0)
-    bpm = estimate_tempo(env, lo=50, hi=170, prior_bpm=prior_bpm)
-    frames = _dp_beats(env, 60 * FPS / bpm)
-    times = frames / FPS
-    if len(times) < 2:
-        return BeatGrid.constant(bpm, float(onsets[0]), beats_per_bar=beats_per_bar)
-    spb = float(np.median(np.diff(times)))
-    head = np.arange(times[0] - spb, onsets.min() - spb, -spb)[::-1]
-    tail = np.arange(times[-1] + spb, end + 2 * spb, spb)
-    return BeatGrid(np.concatenate([head, times, tail]), beats_per_bar)
+    bpm, phase = fit_tempo(onsets, w, prior_bpm=prior_bpm)
+    period = 60.0 / bpm
+    first = phase - np.ceil((phase - onsets.min()) / period) * period   # the last grid beat at or before the first note
+    times, t, p = [], first, period
+    while t < end + 2 * period:
+        times.append(t)
+        k = int(np.searchsorted(onsets, t))
+        near = [onsets[j] for j in (k - 1, k) if 0 <= j < len(onsets) and abs(onsets[j] - t) < 0.12]
+        if near:
+            err = min(near, key=lambda o: abs(o - t)) - t
+            t += 0.25 * err               # phase correction
+            p += 0.04 * err               # slow tempo correction
+            p = float(np.clip(p, 0.9 * period, 1.1 * period))
+        t += p
+    return BeatGrid(np.array(times), beats_per_bar)
