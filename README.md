@@ -1,3 +1,21 @@
+# Running the full app (sing → sheet music → counter-melody)
+
+```
+npm install
+npm start        # starts the Python API (counter_api.py, port 8001) and Vite together
+```
+
+Open the Vite URL, sing (or press **Load example**), then press **Add counter-melody** under "03 / Counter-melody" and pick a voice. The score switches to two staves: your melody plus the generated line.
+
+How the pieces connect:
+
+- **Shared note model** (`src/noteModel.js`): `{midi, start, duration}` with times in **beats**. The recorder and renderer work in seconds internally. Convert at the boundary with `secondsToBeats` / `beatsToSeconds`.
+- **`counter_api.py`**: `POST /api/counter` takes `{notes, key, meter, bpm, voice}` (key names match `src/analyzeMelody.js`) and returns `{counter, clef, key, style, chords, ...}` in the same note format. Vite proxies `/api` to it (`vite.config.js`). `npm run api` runs only the API.
+- **`src/counterMelody.js`**: calls the API from the browser.
+- **`scoreToAbc(parts, opts)`** in `src/melodyToAbc.js`: renders any number of aligned staves. Future harmony parts can use it too.
+
+The API runs only in development (through the Vite proxy). A deployed build needs the Python API hosted somewhere, with `/api` routed to it.
+
 # Counter-melody generator
 
 Write a melody in LilyPond. This tool writes **one** independent counter-melody that a friend can sing alongside it, and returns a complete LilyPond score.
