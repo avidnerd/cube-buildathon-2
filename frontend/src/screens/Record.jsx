@@ -58,7 +58,7 @@ export function RecordScreen({ project, setProject, takes, setTakes, showToast, 
     deck = <><div className="big">{String(Math.floor(secs / 60)).padStart(2, '0')}:{(secs % 60).toFixed(1).padStart(4, '0')}</div><p className="rec"><i/>REC</p></>;
   } else if (rec.status === 'processing') deck = <><div className="big small">{rec.progress}%</div><p className="meta">{rec.stage}</p><div className="progress" style={{ width: 200 }}><i style={{ width: `${rec.progress}%` }}/></div></>;
   else if (take) deck = <><div className="big small">TAKE {selected + 1}</div><p className="meta">{take.notes.length} notes · {take.bpm} BPM · {take.meter} · {keyToSpec(take.key)}{take.label === 'demo' ? ' · sample' : ''}{inUse ? ' · in use' : ''}</p></>;
-  else deck = <><div className="big">READY</div><p className="meta">{countIn ? 'One bar of count-in, then sing' : 'Just sing. Tempo and key are guessed after.'}</p></>;
+  else deck = <div className="big">READY</div>;
 
   const levelBars = Math.round(rec.live.level * 16);
   return <>
@@ -69,7 +69,7 @@ export function RecordScreen({ project, setProject, takes, setTakes, showToast, 
         onChange={e => { rec.upload(e.target.files[0]); e.target.value = ''; }}/>
     </>}</Header>
     <div className="scroll">
-      <Top title={project.title} meta={`Track 1 · melody${take ? ` · take ${selected + 1}` : ''}`}/>
+      <Top title={project.title} meta={take ? `Track 1 · melody · take ${selected + 1}` : undefined}/>
       <section className="panel deck" aria-live="polite">
         <div>{deck}</div>
         <div className="beats" aria-hidden="true">{Array.from({ length: bar }, (_, i) =>
@@ -78,7 +78,7 @@ export function RecordScreen({ project, setProject, takes, setTakes, showToast, 
       <section className="panel recroll" aria-label="Notes heard">
         <PianoRoll tracks={[{ id: 'mel', color: 'var(--t1)', notes: shownNotes }]} totalBeats={rollBeats} beatsPerBar={bar}
           beat={rec.status === 'rec' ? rec.live.beat : null} range={busy ? [48, 79] : undefined}
-          hint={busy ? 'Your notes appear here as you sing' : countIn ? 'Press Record, wait for the count-in, then sing' : 'Press Record and sing'}/>
+          hint={busy ? 'Your notes appear here as you sing' : undefined}/>
       </section>
       {rec.message && <p className="msg err" role="alert">{rec.message}</p>}
       {take && !busy && <p className="msg">{take.notice}</p>}
@@ -91,14 +91,12 @@ export function RecordScreen({ project, setProject, takes, setTakes, showToast, 
           <button className="chip" aria-pressed={clickOn} onClick={() => setClickOn(c => !c)}>Click</button>
         </>}
       </div>
-      {!countIn && <p className="msg">Free singing: tempo, time signature and key are guessed when you stop. You can change all of them later in Arrange → Settings.</p>}
       <div className="level" aria-label="Mic level"><span>Mic</span>{Array.from({ length: 16 }, (_, i) => <i key={i} className={i < levelBars ? 'on' : ''}/>)}</div>
       {takes.length > 0 && <div className="takes"><span className="meta">Takes</span>
         {takes.map((t, i) => <button key={i} className="take" aria-pressed={i === selected} disabled={busy} onClick={() => setSelected(i)}>
           {i + 1}{project.tracks[0]?.takeId === t.id ? ' ★' : ''}</button>)}
         {!busy && <button className="take new" onClick={rec.start} aria-label="Record a new take">+ {takes.length + 1}</button>}
       </div>}
-      <p className="msg">Use headphones if you can. Sing one voice, clearly, near the mic.</p>
     </div>
     {rec.status === 'ready' && take && !inUse
       ? <button className="cta" onClick={useTake}>USE TAKE {selected + 1}</button>
