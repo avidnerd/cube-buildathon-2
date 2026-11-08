@@ -356,6 +356,7 @@ def transcribe(samples: np.ndarray, sr: int, bpm: float | None = None, offset: f
       bpm + offset       a click-track recording; offset = seconds where beat 0 is.
                          Constant lateness is measured and removed.
       align_first_note   with bpm: beat 0 = the first sung note (no count-in)
+      neither            tempo and beats detected from the sung notes themselves
     """
     x = np.asarray(samples, dtype=np.float64)
     if x.ndim > 1:
@@ -375,9 +376,16 @@ def transcribe(samples: np.ndarray, sr: int, bpm: float | None = None, offset: f
 
     raw = absorb_ornaments(_segment(times, midi, _short_rms(x, sr, times)))
     lag_ms = 0.0
+    if beat_grid is None and bpm is None:
+        # No click, no band: find the tempo from the sung notes themselves.
+        from backend.harmony.beats import beats_from_onsets
+
+        beat_grid = beats_from_onsets(np.array([n.t0 for n in raw]),
+                                      np.sqrt([max(n.t1 - n.t0, 0.05) for n in raw]),
+                                      end=float(len(x)) / sr) if raw else None
+        if beat_grid is None:
+            beat_grid = BeatGrid.constant(90.0, 0.0)
     if beat_grid is None:
-        if bpm is None:
-            raise ValueError("need bpm or beat_grid")
         if align_first_note and raw:
             offset = raw[0].t0
         beats = BeatGrid.constant(bpm, offset)

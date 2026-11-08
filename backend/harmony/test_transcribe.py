@@ -120,3 +120,16 @@ def test_real_notes_are_not_absorbed():
     from backend.harmony.transcribe import RawNote, absorb_ornaments
     raw = [RawNote(0.0, 0.2, 60, 60.0), RawNote(0.2, 0.4, 62, 62.0), RawNote(0.4, 0.6, 64, 64.0)]
     assert absorb_ornaments(raw) == raw
+
+
+@pytest.mark.parametrize("bpm", [72, 96, 120])
+def test_tempo_detected_from_singing_alone(bpm):
+    """No count-in, no click: the tempo comes from the sung rhythm."""
+    melody = TWINKLE * 2
+    melody = [(p, s + (16 if k >= len(TWINKLE) else 0), d) for k, (p, s, d) in enumerate(melody)]
+    y, _ = synth_voice(melody, bpm, count_in_beats=0, click=False)
+    y = np.concatenate([np.zeros(int(0.8 * SR)), y])
+    tr = transcribe(y, SR)
+    got = tr.meta["bpm"]
+    assert got == pytest.approx(bpm, rel=0.05) or got == pytest.approx(2 * bpm, rel=0.05) or got == pytest.approx(bpm / 2, rel=0.05), got
+    assert [n["pitch"] for n in tr.notes][:7] == [60, 60, 67, 67, 69, 69, 67]

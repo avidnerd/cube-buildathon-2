@@ -124,10 +124,10 @@ def analyze(job: dict, x: np.ndarray, sr: int, source: str, bpm: float | None, o
         v16 = resample(vocals, vsr, PITCH_SR)
         if beat_grid is not None:
             tr = transcribe(v16, PITCH_SR, beat_grid=beat_grid)
-        elif source == "mic":
-            tr = transcribe(v16, PITCH_SR, bpm or 90, offset)
-        else:
-            tr = transcribe(v16, PITCH_SR, bpm or 90, align_first_note=True)
+        elif bpm is not None:  # an explicit tempo (API callers)
+            tr = transcribe(v16, PITCH_SR, bpm, offset, align_first_note=source != "mic")
+        else:  # voice only: tempo detected from the singing
+            tr = transcribe(v16, PITCH_SR)
         if not tr.notes:
             raise ValueError("didn't hear a melody. Is there singing in this audio?")
         job["audio"]["vocals"] = (vocals, vsr)          # source for harmony in the lead's voice

@@ -162,3 +162,33 @@ def track_beats(samples: np.ndarray, sr: int, bpm_hint: float | None = None, bea
     end = len(x) / sr
     tail = np.arange(times[-1] + spb, end + spb, spb)
     return BeatGrid(np.concatenate([head, times, tail]), beats_per_bar)
+
+
+def beats_from_onsets(onsets: np.ndarray, weights: np.ndarray | None = None, end: float | None = None,
+                      beats_per_bar: int = 4, prior_bpm: float = 95.0) -> BeatGrid:
+    """Tempo and beats from note onsets alone (a voice with no click or band).
+
+    Builds a pulse train at the onsets (longer notes weigh more), then uses
+    the same tempo estimate + dynamic-programming beat placement as for audio.
+    """
+    onsets = np.asarray(onsets, dtype=float)
+    if len(onsets) < 4:
+        return BeatGrid.constant(prior_bpm, float(onsets[0]) if len(onsets) else 0.0, beats_per_bar=beats_per_bar)
+    w = np.ones_like(onsets) if weights is None else np.asarray(weights, dtype=float)
+    end = float(end if end is not None else onsets.max() + 1.0)
+    n = int(end * FPS) + 2
+    env = np.zeros(n)
+    idx = np.clip((onsets * FPS).astype(int), 0, n - 1)
+    np.add.at(env, idx, w)
+    k = np.exp(-0.5 * (np.arange(-3, 4) / 1.2) ** 2)  # ~±70 ms smear: singers aren't on the grid
+    env = np.convolve(env, k / k.sum(), mode="same")
+    env = env / (env.std() or 1.0)
+    bpm = estimate_tempo(env, lo=50, hi=170, prior_bpm=prior_bpm)
+    frames = _dp_beats(env, 60 * FPS / bpm)
+    times = frames / FPS
+    if len(times) < 2:
+        return BeatGrid.constant(bpm, float(onsets[0]), beats_per_bar=beats_per_bar)
+    spb = float(np.median(np.diff(times)))
+    head = np.arange(times[0] - spb, onsets.min() - spb, -spb)[::-1]
+    tail = np.arange(times[-1] + spb, end + 2 * spb, spb)
+    return BeatGrid(np.concatenate([head, times, tail]), beats_per_bar)

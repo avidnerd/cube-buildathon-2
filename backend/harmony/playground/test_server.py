@@ -148,3 +148,11 @@ def test_song_upload_full_pipeline(tmp_path):
     # A voice on its own is recognized as having no music.
     solo = _analyze({"sr": sr, "channels": 1, "source": "upload", "bpm": 100, "lyrics": 0}, voice)
     assert solo["has_music"] is False and solo["chords"] is None
+
+
+def test_mic_recording_without_tempo_detects_it():
+    y, _ = synth_voice(SUNG, 96, sr=44100, count_in_beats=0, click=False)
+    y = np.concatenate([np.zeros(30000), y])
+    res = _analyze({"sr": 44100, "channels": 1, "source": "mic", "lyrics": 0}, y)
+    assert [n["pitch"] for n in res["notes"]] == [p for p, _, _ in SUNG]
+    assert res["bpm"] == pytest.approx(96, rel=0.05) or res["bpm"] == pytest.approx(48, rel=0.05)
