@@ -235,9 +235,14 @@ def song_fingerprint(notes) -> str:
 _WRONG_SIDE = NODE_FEATURES.index("wrong_side")
 
 
+_OUT_OF_KEY = NODE_FEATURES.index("out_of_key")
+OUT_OF_KEY_COST = 3.0  # a note in neither the key nor the chord needs strong evidence
+
+
 def side_rule(lat: Lattice):
-    """Upper parts never below the lead, lower parts never above it (a rule, not a preference)."""
-    return lambda i: np.where(lat.node[i][:, _WRONG_SIDE] > 0, -1e6, 0.0)
+    """Upper parts never below the lead, lower parts never above it (a rule, not a
+    preference); notes outside both the key and the chord are strongly discouraged."""
+    return lambda i: np.where(lat.node[i][:, _WRONG_SIDE] > 0, -1e6, 0.0) - OUT_OF_KEY_COST * lat.node[i][:, _OUT_OF_KEY]
 
 
 def _bias_fn(lat: Lattice, wn: np.ndarray, wd: np.ndarray):

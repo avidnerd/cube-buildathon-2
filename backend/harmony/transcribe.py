@@ -474,7 +474,7 @@ def transcribe(samples: np.ndarray, sr: int, bpm: float | None = None, offset: f
     midi = midi - off
 
     raw = absorb_ornaments(_segment(times, midi, _short_rms(x, sr, times)))
-    raw = split_level_changes(raw, times, midi)
+    raw = absorb_ornaments(split_level_changes(raw, times, midi))  # splitting can expose new scoop fragments
     # Name the notes with drift + key awareness instead of plain rounding.
     names, _key, drift = name_notes([n.midi for n in raw], [n.t1 - n.t0 for n in raw])
     raw = [RawNote(n.t0, n.t1, q, n.midi) for n, q in zip(raw, names)]
