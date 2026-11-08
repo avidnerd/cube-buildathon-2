@@ -149,3 +149,19 @@ def test_shift_curve_glides_between_notes():
                        [{"pitch": 64}, {"pitch": 63}])
     assert np.interp(0.5, t, s) == 4 and np.interp(1.5, t, s) == 3
     assert 3 < np.interp(1.0, t, s) < 4
+
+
+def test_key_of_a_melody_that_dwells_on_the_third():
+    """'Until I Found You' (B-flat major) hangs on D: correlation alone said D minor."""
+    from backend.harmony.reharmonize import estimate_key
+    prof = np.zeros(12)
+    for pc, secs in {0: 2.2, 2: 4.9, 3: 4.0, 4: 0.26, 5: 3.8, 7: 2.5, 9: 2.5, 10: 1.0, 11: 0.07}.items():
+        prof[pc] = secs
+    assert estimate_key(prof) in ((10, "major"), (7, "minor"))  # B-flat major or its relative
+
+
+def test_never_a_tritone_against_a_held_lead_note():
+    mel = melody_notes([63, 62, 65, 63, 62], dur=0.6)  # E-flat neighbour tones, B-flat major
+    for side, target in ((+1, 3.5), (-1, 8.5)):
+        part = plan_part(mel, lambda t: parse_chord("Eb"), (10, "major"), VOICE, side, target)
+        assert all(abs(h["pitch"] - m["pitch"]) % 12 not in (1, 2, 6, 10, 11) for h, m in zip(part, mel))

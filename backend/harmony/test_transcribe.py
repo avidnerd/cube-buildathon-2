@@ -103,3 +103,20 @@ def test_syncopation_survives_snapping():
     y, offset = synth_voice(notes, 84)
     tr = transcribe(y, SR, 84, offset)
     assert [(n["pitch"], n["start"]) for n in tr.notes] == [(p, float(s)) for p, s, _ in notes]
+
+
+def test_scoops_and_slides_fold_into_their_note():
+    from backend.harmony.transcribe import RawNote, absorb_ornaments
+    raw = [RawNote(0.00, 0.09, 52, 52.0), RawNote(0.09, 0.19, 53, 53.0), RawNote(0.19, 0.28, 52, 52.0),
+           RawNote(0.28, 0.80, 53, 53.0),                                   # scoop E-F-E into a held F
+           RawNote(1.00, 1.50, 62, 62.0), RawNote(1.50, 1.58, 59, 59.0),     # slide D -> B -> G
+           RawNote(1.58, 1.66, 55, 55.0), RawNote(1.66, 2.10, 57, 57.0)]
+    out = absorb_ornaments(raw)
+    assert [n.pitch for n in out] == [53, 62, 57]
+    assert out[0].t0 == 0.0 and out[0].t1 == 0.80
+
+
+def test_real_notes_are_not_absorbed():
+    from backend.harmony.transcribe import RawNote, absorb_ornaments
+    raw = [RawNote(0.0, 0.2, 60, 60.0), RawNote(0.2, 0.4, 62, 62.0), RawNote(0.4, 0.6, 64, 64.0)]
+    assert absorb_ornaments(raw) == raw

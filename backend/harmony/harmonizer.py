@@ -54,7 +54,10 @@ W_OUT_OF_KEY = 0.6
 W_INTERVAL = 0.15    # per semitone away from the arrangement's target interval
 W_DOUBLING = 1.2     # same pitch class as the lead: that's doubling, not harmony
 W_SWEET = 0.5        # 3rds/6ths with the lead: what makes a harmony sound sweet rather than hollow
-W_STEP = 2.0         # a 2nd/7th against the lead itself grates, even on a chord tone
+W_STEP = 3.0         # a 2nd/7th against the lead itself grates, even on a chord tone...
+W_TRITONE = 2.5      # ...and so does a tritone
+CLASH_FULL_S = 0.25  # clashes count fully once held this long (shorter ones pass by)
+W_PART_DOUBLE = 2.0  # two harmony parts on the same note name: thin, not a chord
 W_WRONG_SIDE = 4.0
 W_COMFORT = 1.0      # per semitone outside the comfortable range
 W_MOTION = 0.15      # per semitone the harmony line moves
@@ -78,11 +81,14 @@ def plan_part(
     side: int,
     target: float,
     scene_for: Callable[[dict], Scene] | None = None,
+    others: Sequence[Sequence[int]] = (),
 ) -> list[dict]:
     """melody: notes with pitch, t0, t1 (seconds). Returns harmony notes with the same timing.
 
     scene_for(note) -> what's sounding under that note (measured from the real
     accompaniment). Without it, the chord at that time is used as a soft pad.
+    others: pitches (one per melody note) of harmony parts already planned;
+    this part avoids doubling them so the voices spell out a full chord.
     """
     if not melody:
         return []
@@ -106,8 +112,14 @@ def plan_part(
         cost = W_DISSONANCE * np.maximum(0.0, d - d.min() - CONSONANT_BAND)
         cost += W_DOUBLING * (pcs == m % 12)
         ic = np.abs(opts - m) % 12
+        held = min(1.0, (n["t1"] - n["t0"]) / CLASH_FULL_S)
         cost -= W_SWEET * np.isin(ic, (3, 4, 8, 9))
-        cost += W_STEP * np.isin(ic, (1, 2, 10, 11))
+        cost += W_STEP * (0.4 + 0.6 * held) * np.isin(ic, (1, 2, 10, 11))
+        cost += W_TRITONE * (0.4 + 0.6 * held) * (ic == 6)
+        for other in others:
+            o = int(other[len(cands)])
+            cost += W_PART_DOUBLE * (pcs == o % 12)
+            cost += W_STEP * 0.5 * held * np.isin(np.abs(opts - o) % 12, (1, 2, 10, 11))  # parts rubbing
         tones = ch.tones if ch is not None else frozenset()
         cost -= W_CHORD_TONE * np.isin(pcs, list(tones))
         cost -= W_IN_KEY * np.isin(pcs, list(sc_ext))
@@ -166,8 +178,11 @@ def plan_parts(melody, chord_at, key, voice, arrangement: str = "classic",
     if scene_for is not None:  # measure each note's scene once for all parts
         cache = {id(n): scene_for(n) for n in melody}
         scene_for = lambda n, _c=cache: _c[id(n)]  # noqa: E731
-    return {pid: plan_part(melody, chord_at, key, voice, side, target, scene_for)
-            for pid, _, side, target in arr["parts"]}
+    out: dict[str, list[dict]] = {}
+    for pid, _, side, target in arr["parts"]:  # later parts fill in around earlier ones
+        others = [[h["pitch"] for h in part] for part in out.values()]
+        out[pid] = plan_part(melody, chord_at, key, voice, side, target, scene_for, others)
+    return out
 
 
 # ---------------------------------------------------------------------------

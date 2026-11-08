@@ -394,15 +394,27 @@ _KK_MAJOR = np.array([6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66
 _KK_MINOR = np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17])
 
 
+W_IN_SCALE = 3.0  # key finding: share of sung time inside the key's scale
+
+
 def estimate_key(profile: np.ndarray) -> tuple[int, str]:
-    if profile.sum() <= 0:
+    """Krumhansl-Kessler correlation plus how much of the music sits in the scale.
+
+    Correlation alone over-weights whichever note a melody dwells on (a B-flat
+    major tune that hangs on D reads as D minor, making every E-flat "wrong");
+    the in-scale share rules out keys whose scale the singer keeps leaving.
+    """
+    total = profile.sum()
+    if total <= 0:
         return 0, "major"
-    best = (-2.0, 0, "major")
-    for mode, prof in (("major", _KK_MAJOR), ("minor", _KK_MINOR)):
+    best = (-np.inf, 0, "major")
+    for mode, prof, sc in (("major", _KK_MAJOR, (0, 2, 4, 5, 7, 9, 11)), ("minor", _KK_MINOR, (0, 2, 3, 5, 7, 8, 10))):
         for tonic in range(12):
             r = np.corrcoef(profile, np.roll(prof, tonic))[0, 1]
-            if np.isfinite(r) and r > best[0]:
-                best = (r, tonic, mode)
+            inside = sum(profile[(tonic + i) % 12] for i in sc) / total
+            score = (r if np.isfinite(r) else 0.0) + W_IN_SCALE * inside
+            if score > best[0]:
+                best = (score, tonic, mode)
     return best[1], best[2]
 
 

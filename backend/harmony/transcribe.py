@@ -161,6 +161,43 @@ def _tuning_offset(m: np.ndarray) -> float:
     return float(np.angle(np.mean(np.exp(1j * ang))) / (2 * np.pi))
 
 
+ORNAMENT_S = 0.13      # shorter than this and touching a neighbour = scoop/slide/wobble
+ORNAMENT_SEMITONES = 3
+
+
+def absorb_ornaments(notes: list[RawNote]) -> list[RawNote]:
+    """Fold scoops, slides and vibrato wobbles into the note they belong to.
+
+    A singer sliding up into "I" produces E-F-E-F in 0.1 s chunks; as notes,
+    each would get its own harmony note and the harmony would twitch. Merged,
+    the harmony holds one note and (being the lead's voice re-pitched) still
+    follows the scoop naturally.
+    """
+    notes = list(notes)
+    changed = True
+    while changed:
+        changed = False
+        for i, n in enumerate(notes):
+            if n.t1 - n.t0 >= ORNAMENT_S:
+                continue
+            cands = []
+            for j in (i - 1, i + 1):
+                if 0 <= j < len(notes):
+                    o = notes[j]
+                    gap = (n.t0 - o.t1) if j < i else (o.t0 - n.t1)
+                    if gap < 0.06 and abs(o.pitch - n.pitch) <= ORNAMENT_SEMITONES:
+                        cands.append(j)
+            if not cands:
+                continue
+            j = max(cands, key=lambda k: notes[k].t1 - notes[k].t0)
+            o = notes[j]
+            notes[j] = RawNote(min(o.t0, n.t0), max(o.t1, n.t1), o.pitch, o.midi)
+            del notes[i]
+            changed = True
+            break
+    return notes
+
+
 def _short_rms(x: np.ndarray, sr: int, times: np.ndarray, win_s: float = 0.016) -> np.ndarray:
     """Loudness on a short window at each frame centre (pitch frames are too long
     to see the brief dip between re-articulated notes)."""
@@ -327,7 +364,7 @@ def transcribe(samples: np.ndarray, sr: int, bpm: float | None = None, offset: f
     off = _tuning_offset(midi)
     midi = midi - off
 
-    raw = _segment(times, midi, _short_rms(x, sr, times))
+    raw = absorb_ornaments(_segment(times, midi, _short_rms(x, sr, times)))
     lag_ms = 0.0
     if beat_grid is None:
         if bpm is None:
