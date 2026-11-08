@@ -54,14 +54,41 @@ def test_parts_keep_the_leads_exact_timing_and_words():
             assert [(h["t0"], h["t1"], h["lyric"]) for h in part] == [(m["t0"], m["t1"], m["lyric"]) for m in mel]
 
 
-def test_scale_melody_gets_smooth_parallel_thirds():
+I_IV_V_I = lambda t: parse_chord(["C", "C", "F", "F", "G", "G", "C", "C"][min(7, int((t - 0.2) / 0.5))])
+
+
+@pytest.mark.parametrize("side,target", [(+1, 3.5), (-1, 8.5)])
+def test_scale_melody_gets_a_smooth_consonant_line(side, target):
     mel = melody_notes([60, 62, 64, 65, 67, 69, 71, 72])
-    part = plan_part(mel, lambda t: None, (0, "major"), VOICE, +1, 3.5)
-    ivs = [h["pitch"] - m["pitch"] for h, m in zip(part, mel)]
-    assert all(iv in (3, 4) for iv in ivs), ivs                       # diatonic thirds
+    part = plan_part(mel, I_IV_V_I, (0, "major"), VOICE, side, target)
+    ics = [abs(h["pitch"] - m["pitch"]) % 12 for h, m in zip(part, mel)]
+    assert not set(ics) & {0, 1, 2, 10, 11}, ics                        # never doubles or rubs against the lead
     assert all(h["pitch"] % 12 in (0, 2, 4, 5, 7, 9, 11) for h in part)  # in key
     leaps = [abs(b["pitch"] - a["pitch"]) for a, b in zip(part, part[1:])]
-    assert max(leaps) <= 2                                             # stepwise like the melody
+    assert max(leaps) <= 5, leaps                                        # a singable line (a 4th at most)
+    chords = [I_IV_V_I(0.5 * (m["t0"] + m["t1"])) for m in mel]
+    on_tones = sum(h["pitch"] % 12 in c.tones for h, c in zip(part, chords))
+    assert on_tones >= 6, [h["pitch"] for h in part]                     # consonant with the harmony
+
+
+def test_follows_the_real_band_even_with_wrong_chord_labels():
+    """The band plays C G Am F; the harmonizer is told it's C the whole time."""
+    from backend.harmony.dissonance import Listener
+    from backend.harmony.test_listen import synth_band
+
+    band, start = synth_band(["C", "G", "Am", "F"], 60, sr=SR, beats_per_chord=2, drums=False)
+    # lead sings chord tones/tensions, two notes per chord, on the real timing
+    lead = [64, 67, 62, 67, 64, 69, 65, 69]
+    mel = [{"pitch": p, "t0": start + i + 0.05, "t1": start + i + 0.9} for i, p in enumerate(lead)]
+    hz = np.array([440 * 2 ** ((lead[min(7, max(0, int(t - start)))] - 69) / 12) for t in np.arange(0, 10, 0.01)])
+    lis = Listener(band, SR, np.arange(0, 10, 0.01), hz)
+    wrong = lambda t: parse_chord("C")
+    real = [parse_chord(c) for c in ("C", "C", "G", "G", "Am", "Am", "F", "F")]
+    for side, target in ((+1, 3.5), (-1, 8.5)):
+        part = plan_part(mel, wrong, (0, "major"), VOICE, side, target,
+                         scene_for=lambda n: lis.scene(n["t0"], n["t1"], n["pitch"]))
+        fits = [h["pitch"] % 12 in c.tones for h, c in zip(part, real)]
+        assert sum(fits) >= 7, ([h["pitch"] for h in part], fits)
 
 
 def test_harmony_lands_on_chord_tones_on_long_notes():

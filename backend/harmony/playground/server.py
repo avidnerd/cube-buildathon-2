@@ -34,6 +34,7 @@ import numpy as np
 
 from backend.harmony.beats import BeatGrid, resample, track_beats
 from backend.harmony.chords import detect_chords
+from backend.harmony.dissonance import Listener, chord_scene
 from backend.harmony.harmonizer import ARRANGEMENTS, plan_parts, render_part
 from backend.harmony.lyrics import (
     attach_lyrics,
@@ -262,18 +263,49 @@ def _chord_at_fn(chords: list, beats: list[float] | None):
     return at
 
 
-def _studio_payload(paths, melody, beats, voice: dict) -> list[dict]:
+def _listener(job_id: str | None) -> tuple[Listener | None, tuple | None]:
+    """(listener over the real accompaniment or None, lead f0 track or None) for a job."""
+    job = _jobs.get(job_id or "")
+    if job is None or "f0" not in job:
+        return None, None
+    if "accompaniment" in job["audio"] and "listener" not in job:
+        acc, sr = job["audio"]["accompaniment"]
+        job["listener"] = Listener(acc, sr, *job["f0"])
+    return job.get("listener"), job["f0"]
+
+
+def _lead_hz(f0, n) -> float | None:
+    if f0 is None:
+        return None
+    times, hz = f0
+    sel = (times >= n["t0"]) & (times <= n["t1"]) & ~np.isnan(hz)
+    return float(np.median(hz[sel])) if sel.any() else None
+
+
+def _studio_payload(paths, names, melody, beats, voice: dict, job_id: str | None = None) -> list[dict]:
     from backend.harmony.reharmonize import _parse_voice_profile
 
     rng = _parse_voice_profile(voice)
     timed = [n for n in melody if "t0" in n and "t1" in n]
+    listener, f0 = _listener(job_id)
     out = []
-    for p in paths:
+    for p, name in zip(paths, names):
         d = p.to_dict()
         for seg in d["timeline"]:
             seg["voicing"] = _voicing(seg["symbol"])
         chord_at = _chord_at_fn(p.chords, beats)
-        d["parts"] = {arr: plan_parts(timed, chord_at, p.key, rng, arr) for arr in ARRANGEMENTS}
+        if listener is not None and name == "Plain":
+            # Sung over the real band: measure what's actually sounding.
+            scene_for = lambda n: listener.scene(n["t0"], n["t1"], int(n["pitch"]))  # noqa: E731
+            d["backing"] = "band"
+        else:
+            # New chords (or no band): the option's chords as a pad + the lead's real pitch.
+            def scene_for(n, _at=chord_at):
+                ch = _at(0.5 * (n["t0"] + n["t1"]))
+                tones = list(ch.tones) if ch is not None else []
+                return chord_scene(tones, int(n["pitch"]), _lead_hz(f0, n))
+            d["backing"] = "pad"
+        d["parts"] = {arr: plan_parts(timed, chord_at, p.key, rng, arr, scene_for) for arr in ARRANGEMENTS}
         d["tension"] = round(progression_tension(p.chords, *p.key), 3)
         out.append(d)
     return out
@@ -316,7 +348,7 @@ def api_options(req: dict) -> dict:
         if fresh:
             chosen.append(fresh[0])
             names.append(name)
-    payload = _studio_payload(chosen, melody, req.get("beats"), req["voice"])
+    payload = _studio_payload(chosen, names, melody, req.get("beats"), req["voice"], req.get("job"))
     for d, name in zip(payload, names):
         d["name"] = name
     arrangements = {k: {"label": v["label"], "parts": [{"id": pid, "label": lbl} for pid, lbl, _, _ in v["parts"]]}

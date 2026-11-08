@@ -529,7 +529,7 @@ async function fetchOptions() {
   if (!S.res) return;
   const body = {
     melody: S.res.notes, chords: S.res.chords, novelty: +$("novelty").value, palette: S.palette, locks: S.locks,
-    voice: voiceRange(), beats_per_bar: S.res.beats_per_bar, chord_every: S.every, beats: S.res.beats,
+    voice: voiceRange(), beats_per_bar: S.res.beats_per_bar, chord_every: S.every, beats: S.res.beats, job: S.jobId,
   };
   try {
     const r = await fetch("/api/options", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -549,7 +549,8 @@ function renderOptions() {
     const card = document.createElement("div");
     card.className = "opt" + (i === S.sel ? " sel" : "");
     const changed = new Set(p.changed_beats);
-    const sub = !p.changed_beats.length ? (S.res.has_music ? "the song's own chords" : "the chords your tune implies") : `${p.changed_beats.length} beats recoloured`;
+    const sub = !p.changed_beats.length ? (S.res.has_music ? "the song's own chords" : "the chords your tune implies")
+      : `${p.changed_beats.length} beats recoloured` + (S.res.has_music ? " · heard over a chord pad, not the band" : "");
     const tens = Math.round(p.tension * 100);
     card.innerHTML = `<div class="head"><div><div class="title">${p.name}</div><div class="sub">${sub}</div></div><button class="chip" data-play>▶</button></div>
       <div class="tension" title="Tonal tension (TIS model): how far the chords pull away from home"><span>calm</span><i><b style="width:${tens}%"></b></i><span>tense</span></div>
@@ -568,7 +569,7 @@ function renderOptions() {
         fetchOptions(); };
       chords.appendChild(c);
     }
-    card.onclick = () => { S.sel = i; stopAll(); renderOptions(); drawRoll(); renderKaraokeIdle(); };
+    card.onclick = () => { S.sel = i; stopAll(); renderOptions(); drawRoll(); if (!$("karaokePanel").classList.contains("hidden")) setupKaraoke(); };
     card.querySelector("[data-play]").onclick = (e) => { e.stopPropagation(); S.sel = i; renderOptions(); drawRoll(); preview(); };
     box.appendChild(card);
   });
@@ -664,8 +665,12 @@ async function preview() {
     catch (e) { showError(e.message); $("preview").textContent = "▶ Hear it"; return; }
   }
   const T = ctx.currentTime + 0.3, bus = ctx.createGain(); bus.gain.value = 0.9; bus.connect(ctx.destination);
-  const nodes = startBuffers([[S.mix, 0.9]], T, from, bus);
   const at = (t) => T + (t - from);
+  // New chords can't be sung over the original band (it still plays the old ones): use a pad + the lead.
+  const overBand = path.backing === "band";
+  const nodes = startBuffers([[overBand ? S.mix : (S.stems.vocals || S.mix), 0.9]], T, from, bus);
+  if (!overBand && S.res.has_music) for (const seg of path.timeline) if (b2t(seg.end) > from)
+    for (const p of seg.voicing) nodes.push(tone(bus, p, at(Math.max(from, b2t(seg.start))), b2t(seg.end) - Math.max(from, b2t(seg.start)), "sine", 0.05));
   if (S.mode === "voice") nodes.push(...startBuffers(voices.map((b) => [b, 0.75]), T, from, bus));
   else for (const pid of partIds()) nodes.push(...phraseTones(bus, parts[pid], at, from, "triangle", 0.11));
   if (!S.res.has_music) for (const seg of path.timeline) if (b2t(seg.start) >= from)
@@ -692,9 +697,10 @@ function partLines() {
 }
 function setupKaraoke() {
   const seg = $("backing"); seg.innerHTML = "";
-  const opts = S.res.has_music
+  const overBand = S.opts.paths[S.sel].backing === "band";
+  const opts = overBand
     ? [["music", "Music only"], ["music+lead", "Music + quiet lead"], ["original", "Original song"]]
-    : [["chords", "Chord pad"], ["chords+lead", "Chords + quiet lead"], ["lead", "Your recording"]];
+    : [["chords", "Chord pad"], ["chords+lead", "Chords + quiet lead"], ["lead", S.res.has_music ? "Lead vocal" : "Your recording"]];
   S.backing = opts[0][0];
   for (const [v, label] of opts) {
     const b = document.createElement("button"); b.dataset.v = v; b.textContent = label; b.setAttribute("aria-pressed", v === S.backing);

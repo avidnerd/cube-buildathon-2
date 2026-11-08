@@ -25,8 +25,9 @@ from typing import Callable, Sequence
 
 import numpy as np
 
+from backend.harmony.dissonance import Scene, candidate_dissonance, chord_scene
 from backend.harmony.reharmonize import Chord
-from backend.harmony.tis import chroma_of, consonance, scale
+from backend.harmony.tis import scale
 
 # ---------------------------------------------------------------------------
 # Arrangements
@@ -42,16 +43,23 @@ ARRANGEMENTS = {
               "parts": (("high", "Top harmony", +1, 7.0), ("low", "Middle harmony", +1, 3.5))},
 }
 
-W_CONS = 0.45        # per unit of TIS norm (range ~15..25)
-W_CHORD_TONE = 1.2
-W_IN_KEY = 0.8
-W_OUT_OF_KEY = 1.2
-W_INTERVAL = 0.55    # per semitone away from the target interval
+# The main criterion is *measured* dissonance (dissonance.py): roughness + TIS
+# tonal dissonance of each candidate against what is actually sounding. The
+# rest are gentle preferences that only break ties between consonant choices.
+W_DISSONANCE = 3.0   # x (0..2.5 per note, relative): the dominant term
+CONSONANT_BAND = 0.45  # notes this close to the least dissonant count as equally good
+W_CHORD_TONE = 0.3   # chord label: weak, labels can be wrong
+W_IN_KEY = 0.3
+W_OUT_OF_KEY = 0.6
+W_INTERVAL = 0.15    # per semitone away from the arrangement's target interval
+W_DOUBLING = 1.2     # same pitch class as the lead: that's doubling, not harmony
+W_SWEET = 0.5        # 3rds/6ths with the lead: what makes a harmony sound sweet rather than hollow
+W_STEP = 2.0         # a 2nd/7th against the lead itself grates, even on a chord tone
 W_WRONG_SIDE = 4.0
 W_COMFORT = 1.0      # per semitone outside the comfortable range
-W_MOTION = 0.22      # per semitone the harmony line moves
-W_SAME_INTERVAL = 1.1  # keep the same (diatonic) interval as the previous note
-W_PARALLEL_PERFECT = 1.0
+W_MOTION = 0.15      # per semitone the harmony line moves
+W_SAME_INTERVAL = 0.5  # keep the same (diatonic) interval as the previous note
+W_PARALLEL_PERFECT = 0.6
 PHRASE_GAP_S = 0.35  # notes further apart than this are in different phrases
 
 
@@ -69,8 +77,13 @@ def plan_part(
     voice: tuple[int, int, int, int],
     side: int,
     target: float,
+    scene_for: Callable[[dict], Scene] | None = None,
 ) -> list[dict]:
-    """melody: notes with pitch, t0, t1 (seconds). Returns harmony notes with the same timing."""
+    """melody: notes with pitch, t0, t1 (seconds). Returns harmony notes with the same timing.
+
+    scene_for(note) -> what's sounding under that note (measured from the real
+    accompaniment). Without it, the chord at that time is used as a soft pad.
+    """
     if not melody:
         return []
     tonic, mode = key
@@ -86,10 +99,15 @@ def plan_part(
         base = list(ch.tones) if ch is not None else [tonic, (tonic + (4 if mode == "major" else 3)) % 12, (tonic + 7) % 12]
         opts = np.array([p for p in range(low, high + 1) if p != m] or [m], dtype=int)
         pcs = opts % 12
-        # Consonance of chord + melody + candidate (melody and harmony weighted up: they're the voices we hear).
-        chromas = np.tile(chroma_of(base + [m], [1.0] * len(base) + [1.5]), (len(opts), 1))
-        chromas[np.arange(len(opts)), pcs] += 1.5
-        cost = -W_CONS * consonance(chromas)
+        scene = scene_for(n) if scene_for is not None else chord_scene(base, m)
+        d = candidate_dissonance(scene, opts, m)
+        # Clash vs. no clash is what matters; ranking among notes that already
+        # sound fine is left to smoothness and 3rd/6th sweetness.
+        cost = W_DISSONANCE * np.maximum(0.0, d - d.min() - CONSONANT_BAND)
+        cost += W_DOUBLING * (pcs == m % 12)
+        ic = np.abs(opts - m) % 12
+        cost -= W_SWEET * np.isin(ic, (3, 4, 8, 9))
+        cost += W_STEP * np.isin(ic, (1, 2, 10, 11))
         tones = ch.tones if ch is not None else frozenset()
         cost -= W_CHORD_TONE * np.isin(pcs, list(tones))
         cost -= W_IN_KEY * np.isin(pcs, list(sc_ext))
@@ -142,9 +160,14 @@ def plan_part(
     return out
 
 
-def plan_parts(melody, chord_at, key, voice, arrangement: str = "classic") -> dict[str, list[dict]]:
+def plan_parts(melody, chord_at, key, voice, arrangement: str = "classic",
+               scene_for: Callable[[dict], Scene] | None = None) -> dict[str, list[dict]]:
     arr = ARRANGEMENTS[arrangement]
-    return {pid: plan_part(melody, chord_at, key, voice, side, target) for pid, _, side, target in arr["parts"]}
+    if scene_for is not None:  # measure each note's scene once for all parts
+        cache = {id(n): scene_for(n) for n in melody}
+        scene_for = lambda n, _c=cache: _c[id(n)]  # noqa: E731
+    return {pid: plan_part(melody, chord_at, key, voice, side, target, scene_for)
+            for pid, _, side, target in arr["parts"]}
 
 
 # ---------------------------------------------------------------------------

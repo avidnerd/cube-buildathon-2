@@ -26,7 +26,7 @@ def _analyze(query, audio):
     job = api_analyze({k: [str(v)] for k, v in query.items()}, _pcm(audio), background=False)
     out = api_job(job["job"])
     assert out["done"] and out["error"] is None, out["error"]
-    return out["result"]
+    return dict(out["result"], _job=job["job"])
 
 
 def test_mic_recording_to_options():
@@ -138,6 +138,12 @@ def test_song_upload_full_pipeline(tmp_path):
     for word in ("twinkle", "star", "wonder", "diamond", "sky"):
         assert word in heard
     assert any(n["lyric"] for n in res["notes"])
+
+    # Plain is harmonized against the real band; new-chord options over a pad.
+    job_id = res["_job"]
+    out = api_options({"melody": res["notes"], "chords": res["chords"], "beats": res["beats"],
+                       "voice": VOICE, "job": job_id})
+    assert [p["backing"] for p in out["paths"]] == ["band", "pad", "pad"]
 
     # A voice on its own is recognized as having no music.
     solo = _analyze({"sr": sr, "channels": 1, "source": "upload", "bpm": 100, "lyrics": 0}, voice)
