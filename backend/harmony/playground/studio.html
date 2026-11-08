@@ -255,7 +255,7 @@
         <button class="primary" id="sendEdits">Teach it my fixes</button>
       </div>
     </div>
-    <p class="muted" style="margin:0 0 4px"><span id="styleNote"></span> <button class="chip hidden" id="resetStyle">reset to default</button></p>
+    <p class="muted" style="margin:0 0 4px"><span id="styleNote"></span> <button class="chip hidden" id="resetStyle">forget my fixes for this song</button></p>
     <p class="muted" style="margin:0 0 10px">Showing <b id="notesWhich"></b>. Change any harmony note, press ▶ to hear that line with your change.
       Your fixes are what the algorithm learns from.</p>
     <div id="notesBody"></div>
@@ -571,7 +571,7 @@ async function fetchOptions() {
     S.opts = j; S.sel = Math.min(S.sel, j.paths.length - 1); S.renders.clear();
     if (!$("arrs").children.length) buildArrangements();
     S.original.clear();
-    show("optsPanel"); renderOptions(); drawRoll(); renderNotes(); renderKaraokeIdle();
+    show("optsPanel"); renderOptions(); drawRoll(); renderNotes(); renderKaraokeIdle(); refreshStyle();
   } catch (e) { showError(e.message); }
 }
 let debounce;
@@ -796,16 +796,16 @@ async function sendEdits() {
   await fetchOptions();   // re-harmonize with the updated style
   await refreshStyle();
   $("editCount").textContent = L.notes
-    ? `learned from ${L.notes} notes: matches your fixes ${Math.round(100 * L.before)}% → ${Math.round(100 * L.after)}%. Harmony updated.`
+    ? `learned your fixes for this song (${L.notes} notes): ${Math.round(100 * L.before)}% → ${Math.round(100 * L.after)}% match. Other songs are unaffected.`
     : `saved ${changes.length} fix${changes.length === 1 ? "" : "es"}`;
 }
 async function refreshStyle() {
-  const j = await (await fetch("/api/style")).json();
+  const j = await (await fetch("/api/style" + (S.opts?.song ? `?song=${S.opts.song}` : ""))).json();
   $("styleNote").textContent = j.learned ? `Style: ${j.note}` : "Style: default";
   show("resetStyle", j.learned);
 }
 async function resetStyle() {
-  await fetch("/api/style/reset", { method: "POST" });
+  await fetch("/api/style/reset" + (S.opts?.song ? `?song=${S.opts.song}` : ""), { method: "POST" });
   await refreshStyle(); await fetchOptions();
 }
 

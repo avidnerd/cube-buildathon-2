@@ -89,7 +89,10 @@ NODE_FEATURES = (
     "part_double",      # same note name as another harmony part
     "part_rub",         # a 2nd against another harmony part
     "completes_triad",  # with the lead and the other part(s), spells a major/minor triad
-) + DEGREE_PAIRS        # lead on scale degree a -> harmony on degree b (a singer's instinct, learnable)
+)
+# Plus DEGREE_PAIRS: lead on scale degree a -> harmony on degree b (a singer's
+# instinct, learnable). At most one is active per candidate, so they're stored
+# as an index rather than ~100 mostly-zero columns.
 EDGE_FEATURES = (
     "motion",           # semitones the harmony moves
     "same_interval",    # keeps the same diatonic interval to the lead as before (parallel)
@@ -112,6 +115,7 @@ DEFAULT_WEIGHTS: dict[str, float] = {
     "parallel_perfect": 0.6, "leap": 0.5,
     **{f: 0.0 for f in DEGREE_PAIRS},
 }
+NET_WINDOW = 14        # semitones around the lead the learned model was trained on
 CONSONANT_BAND = 0.45  # measured dissonance within this of the best counts as no clash
 CLASH_FULL_S = 0.25    # clashes count fully once held this long (shorter ones pass by)
 PHRASE_GAP_S = 0.35    # notes further apart than this are in different phrases
@@ -147,8 +151,48 @@ def _diatonic_steps(a: int, b: int, sc: frozenset[int]) -> int:
 class Lattice:
     """Every candidate's features, for decoding or training."""
     cands: list[np.ndarray]          # per note: candidate pitches
-    node: list[np.ndarray]           # per note: (C, len(NODE_FEATURES))
-    edge: list[np.ndarray]           # per transition i-1 -> i: (C_prev, C, len(EDGE_FEATURES))
+    node: list[np.ndarray]           # per note: (C, len(NODE_FEATURES)) float32
+    deg: list[np.ndarray]            # per note: (C,) index into DEGREE_PAIRS, -1 if none
+    edge: list[np.ndarray]           # per transition i-1 -> i: (C_prev, C, len(EDGE_FEATURES)) float32
+    raw: list[np.ndarray] | None = None  # per note: (C, len(RAW_FEATURES)) context for the learned scorer
+
+
+# Raw context for the learned (neural) scorer: what a musician "sees" when choosing
+# a harmony note, without hand-made judgements on top.
+_IV_RANGE = 15
+RAW_FEATURES = (
+    [f"iv_{d}" for d in range(-_IV_RANGE, _IV_RANGE + 1)]          # interval to the lead (one-hot)
+    + [f"cand_pc_{k}" for k in range(12)]                          # candidate's pitch class, relative to the key
+    + [f"lead_pc_{k}" for k in range(12)]                          # lead's pitch class, relative to the key
+    + [f"band_rel_cand_{k}" for k in range(12)]                    # band energy k semitones above the candidate
+    + [f"band_rel_key_{k}" for k in range(12)]                     # band energy by key-relative pitch class
+    + ["minor", "measured", "log_dur", "phrase_pos", "lead_from_prev", "lead_to_next",
+       "lead_height", "cand_height", "first_in_phrase", "last_in_phrase"]
+)
+
+
+def _raw_features(opts: np.ndarray, m: int, tonic: int, mode: str, chroma: np.ndarray, measured: bool,
+                  dur: float, pos: int, prev_iv: float, next_iv: float, lead_mid: float,
+                  first: bool, last: bool) -> np.ndarray:
+    C = len(opts)
+    X = np.zeros((C, len(RAW_FEATURES)), dtype=np.float32)
+    iv = np.clip(opts - m, -_IV_RANGE, _IV_RANGE) + _IV_RANGE
+    X[np.arange(C), iv] = 1.0
+    o = 2 * _IV_RANGE + 1
+    X[np.arange(C), o + (opts - tonic) % 12] = 1.0
+    o += 12
+    X[:, o + (m - tonic) % 12] = 1.0
+    o += 12
+    ch = chroma / max(float(chroma.max()), 1e-9)
+    X[:, o:o + 12] = np.stack([np.roll(ch, -int(p % 12)) for p in opts])
+    o += 12
+    X[:, o:o + 12] = np.roll(ch, -tonic)
+    o += 12
+    X[:, o:] = [mode == "minor", measured, np.log(max(dur, 0.05)), min(pos, 6) / 6.0,
+                np.clip(prev_iv, -12, 12) / 12.0, np.clip(next_iv, -12, 12) / 12.0,
+                (m - lead_mid) / 12.0, 0.0, first, last]
+    X[:, -3] = (opts - m) / 12.0
+    return X
 
 
 def build_lattice(
@@ -161,6 +205,8 @@ def build_lattice(
     scene_for: Callable[[dict], Scene] | None = None,
     others: Sequence[Sequence[int]] = (),
     must_include: Sequence[int | None] | None = None,
+    max_iv: int | None = None,
+    compact: bool = False,
 ) -> Lattice:
     tonic, mode = key
     sc = scale(tonic, mode)
@@ -168,7 +214,7 @@ def build_lattice(
     low, high, s_low, s_high = voice
     lead_mid = float(np.median([n["pitch"] for n in melody]))
 
-    cands, node = [], []
+    cands, node, degs, raws = [], [], [], []
     pos_in_phrase = 0
     for k, n in enumerate(melody):
         if k > 0 and n["t0"] - melody[k - 1]["t1"] >= PHRASE_GAP_S:
@@ -177,6 +223,8 @@ def build_lattice(
         ch = chord_at(0.5 * (n["t0"] + n["t1"]))
         base = list(ch.tones) if ch is not None else [tonic, (tonic + (4 if mode == "major" else 3)) % 12, (tonic + 7) % 12]
         pool = set(range(low, high + 1)) | {m}
+        if max_iv is not None:
+            pool = {p for p in pool if abs(p - m) <= max_iv}
         if must_include is not None and must_include[k] is not None:
             pool.add(int(must_include[k]))
         opts = np.array(sorted(pool), dtype=int)
@@ -218,13 +266,12 @@ def build_lattice(
         # Scale-degree pairing (only when both notes are in the key's scale).
         deg = {pc: i + 1 for i, pc in enumerate(sorted(sc, key=lambda q: (q - tonic) % 12))}
         ld = deg.get(m % 12)
-        for f in DEGREE_PAIRS:
-            F[f] = np.zeros(len(opts))
+        di = np.full(len(opts), -1, dtype=np.int16)
         if ld is not None:
             for q, pc in enumerate(pcs):
                 hd = deg.get(int(pc))
                 if hd is not None and opts[q] != m:
-                    F[f"deg_{'up' if opts[q] > m else 'dn'}_{ld}_{hd}"][q] = 1.0
+                    di[q] = _DEG_INDEX[f"deg_{'up' if opts[q] > m else 'dn'}_{ld}_{hd}"]
         for other in others:
             o = int(other[k])
             F["part_double"] += (pcs == o % 12)
@@ -234,7 +281,16 @@ def build_lattice(
             for q, pc in enumerate(pcs):
                 F["completes_triad"][q] = float(_is_triad(have | {int(pc)}))
         cands.append(opts)
-        node.append(np.stack([F[f] for f in NODE_FEATURES], axis=1))
+        node.append(np.stack([F[f] for f in NODE_FEATURES], axis=1).astype(np.float32))
+        degs.append(di)
+        nxt = melody[k + 1] if k + 1 < len(melody) else None
+        prv = melody[k - 1] if k > 0 else None
+        first = pos_in_phrase == 0
+        last = nxt is None or nxt["t0"] - n["t1"] >= PHRASE_GAP_S
+        rf = _raw_features(opts, m, tonic, mode, scene.chroma, scene.measured, n["t1"] - n["t0"],
+                           pos_in_phrase, (m - int(prv["pitch"])) if prv else 0.0,
+                           (int(nxt["pitch"]) - m) if nxt else 0.0, lead_mid, first, last)
+        raws.append(rf.astype(np.float16) if compact else rf)
         pos_in_phrase += 1
 
     steps_all = [np.array([_diatonic_steps(int(n["pitch"]), int(p), sc) for p in c]) for n, c in zip(melody, cands)]
@@ -257,24 +313,37 @@ def build_lattice(
             "parallel_perfect": (moved & perfect).astype(float),
             "leap": k * (np.abs(dP) > 4),
         }
-        edge.append(np.stack([np.broadcast_to(E[f], (len(cands[i - 1]), len(cands[i]))).astype(float)
-                              for f in EDGE_FEATURES], axis=2))
-    return Lattice(cands, node, edge)
+        edge.append(np.stack([np.broadcast_to(E[f], (len(cands[i - 1]), len(cands[i])))
+                              for f in EDGE_FEATURES], axis=2).astype(np.float32))
+    if compact:
+        edge = [e.astype(np.float16) for e in edge]
+    return Lattice(cands, node, degs, edge, raws)
 
 
-def _vectors(w: dict[str, float]) -> tuple[np.ndarray, np.ndarray]:
-    return np.array([w[f] for f in NODE_FEATURES]), np.array([w[f] for f in EDGE_FEATURES])
+_DEG_INDEX = {f: i for i, f in enumerate(DEGREE_PAIRS)}
+_F = {f: i for i, f in enumerate(NODE_FEATURES)}
+
+
+def _vectors(w: dict[str, float]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """(dense node weights, degree-pair weights + a trailing 0 for 'none', edge weights)."""
+    return (np.array([w[f] for f in NODE_FEATURES]),
+            np.array([w[f] for f in DEGREE_PAIRS] + [0.0]),
+            np.array([w[f] for f in EDGE_FEATURES]))
+
+
+def _node_cost(lat: Lattice, i: int, wn: np.ndarray, wd: np.ndarray) -> np.ndarray:
+    return lat.node[i] @ wn + wd[lat.deg[i]]  # index -1 hits the trailing 0
 
 
 def decode(lat: Lattice, w: dict[str, float]) -> list[int]:
     """Viterbi: index of the chosen candidate per note."""
-    wn, we = _vectors(w)
-    acc = lat.node[0] @ wn
+    wn, wd, we = _vectors(w)
+    acc = _node_cost(lat, 0, wn, wd)
     back = []
     for i in range(1, len(lat.cands)):
         total = acc[:, None] + lat.edge[i - 1] @ we
         back.append(np.argmin(total, axis=0))
-        acc = total.min(axis=0) + lat.node[i] @ wn
+        acc = total.min(axis=0) + _node_cost(lat, i, wn, wd)
     j = int(np.argmin(acc))
     path = [j]
     for b in reversed(back):
@@ -283,10 +352,14 @@ def decode(lat: Lattice, w: dict[str, float]) -> list[int]:
     return path[::-1]
 
 
-def path_features(lat: Lattice, path: Sequence[int]) -> tuple[np.ndarray, np.ndarray]:
-    fn = sum(lat.node[i][j] for i, j in enumerate(path))
+def path_features(lat: Lattice, path: Sequence[int]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    fn = np.sum([lat.node[i][j] for i, j in enumerate(path)], axis=0, dtype=np.float64)
+    fd = np.zeros(len(DEGREE_PAIRS))
+    for i, j in enumerate(path):
+        if lat.deg[i][j] >= 0:
+            fd[lat.deg[i][j]] += 1
     fe = sum((lat.edge[i - 1][path[i - 1], path[i]] for i in range(1, len(path))), np.zeros(len(EDGE_FEATURES)))
-    return fn, fe
+    return fn, fd, fe
 
 
 def plan_part(
@@ -299,6 +372,7 @@ def plan_part(
     scene_for: Callable[[dict], Scene] | None = None,
     others: Sequence[Sequence[int]] = (),
     weights: dict[str, float] | None = None,
+    personal: dict | None = None,
 ) -> list[dict]:
     """melody: notes with pitch, t0, t1 (seconds). Returns harmony notes with the same timing.
 
@@ -310,8 +384,21 @@ def plan_part(
     """
     if not melody:
         return []
-    lat = build_lattice(melody, chord_at, key, voice, side, target, scene_for, others)
-    path = decode(lat, weights or load_style())
+    net = None
+    if weights is None:  # the learned model, if trained (with the user's personal adjustment)
+        from backend.harmony import neural
+
+        net = neural.base_model()
+    # The learned model only knows candidates within its training window around the lead.
+    lat = build_lattice(melody, chord_at, key, voice, side, target, scene_for, others,
+                        max_iv=NET_WINDOW if net is not None else None)
+    if net is not None:
+        # The arrangement's side is a rule, not a preference: an upper part never
+        # goes below the lead (unison allowed), a lower part never above it.
+        # personal: this song's adjustments from the user's fixes (never applied to other songs)
+        path = net.decode(lat, bias=neural.personal_bias(lat, personal))  # includes the side rule
+    else:
+        path = decode(lat, weights or load_style())
     out = []
     for n, opts, j in zip(melody, lat.cands, path):
         out.append({
@@ -325,7 +412,8 @@ def plan_part(
 
 def plan_parts(melody, chord_at, key, voice, arrangement: str = "classic",
                scene_for: Callable[[dict], Scene] | None = None,
-               weights: dict[str, float] | None = None) -> dict[str, list[dict]]:
+               weights: dict[str, float] | None = None,
+               personal: dict | None = None) -> dict[str, list[dict]]:
     arr = ARRANGEMENTS[arrangement]
     weights = weights or load_style()
     if scene_for is not None:  # measure each note's scene once for all parts
@@ -334,7 +422,7 @@ def plan_parts(melody, chord_at, key, voice, arrangement: str = "classic",
     out: dict[str, list[dict]] = {}
     for pid, _, side, target in arr["parts"]:  # later parts fill in around earlier ones
         others = [[h["pitch"] for h in part] for part in out.values()]
-        out[pid] = plan_part(melody, chord_at, key, voice, side, target, scene_for, others, weights)
+        out[pid] = plan_part(melody, chord_at, key, voice, side, target, scene_for, others, weights, personal)
     return out
 
 
@@ -388,8 +476,10 @@ class Example:
     gold: list[int]   # index into lattice.cands per note
 
 
-def make_example(melody, chord_at, key, voice, side, target, gold_pitches, scene_for=None, others=()) -> Example:
-    lat = build_lattice(melody, chord_at, key, voice, side, target, scene_for, others, must_include=gold_pitches)
+def make_example(melody, chord_at, key, voice, side, target, gold_pitches, scene_for=None, others=(),
+                 max_iv: int | None = None, compact: bool = False) -> Example:
+    lat = build_lattice(melody, chord_at, key, voice, side, target, scene_for, others, must_include=gold_pitches,
+                        max_iv=max_iv, compact=compact)
     gold = [int(np.flatnonzero(c == g)[0]) for c, g in zip(lat.cands, gold_pitches)]
     return Example(lat, gold)
 
@@ -404,7 +494,7 @@ def agreement(examples: Sequence[Example], w: dict[str, float]) -> float:
 
 
 def fit_style(examples: Sequence[Example], w0: dict[str, float] | None = None, epochs: int = 150,
-              lr: float = 0.1, prior: float = 0.02) -> dict[str, float]:
+              lr: float = 0.1, prior: float = 0.02, frozen: frozenset[str] = FROZEN) -> dict[str, float]:
     """Averaged structured perceptron, pulled gently back toward the starting style.
 
     For each example, decode with the current weights; wherever the user's
@@ -413,27 +503,37 @@ def fit_style(examples: Sequence[Example], w0: dict[str, float] | None = None, e
     a few corrections nudge the style rather than overfit one song.
     """
     w0 = dict(w0 or DEFAULT_WEIGHTS)
-    wn0, we0 = _vectors(w0)
-    free_n = np.array([f not in FROZEN for f in NODE_FEATURES], dtype=float)
-    free_e = np.array([f not in FROZEN for f in EDGE_FEATURES], dtype=float)
-    wn, we = wn0.copy(), we0.copy()
-    sn, se, count = np.zeros_like(wn), np.zeros_like(we), 0
+    wn0, wd0, we0 = _vectors(w0)
+    wd0 = wd0[:-1]
+    free_n = np.array([f not in frozen for f in NODE_FEATURES], dtype=float)
+    free_e = np.array([f not in frozen for f in EDGE_FEATURES], dtype=float)
+    wn, wd, we = wn0.copy(), wd0.copy(), we0.copy()
+    sn, sd, se, count = np.zeros_like(wn), np.zeros_like(wd), np.zeros_like(we), 0
+
+    def as_dict(a, b, c):
+        return dict(zip(NODE_FEATURES, map(float, a))) | dict(zip(DEGREE_PAIRS, map(float, b))) | dict(zip(EDGE_FEATURES, map(float, c)))
+
+    order = list(range(len(examples)))
+    rng = np.random.default_rng(0)
     for _ in range(epochs):
-        for ex in examples:
-            w = dict(zip(NODE_FEATURES, wn)) | dict(zip(EDGE_FEATURES, we))
-            pred = decode(ex.lattice, w)
+        rng.shuffle(order)
+        for k in order:
+            ex = examples[k]
+            pred = decode(ex.lattice, as_dict(wn, wd, we))
             if pred != ex.gold:
-                gn, ge = path_features(ex.lattice, ex.gold)
-                pn, pe = path_features(ex.lattice, pred)
+                gn, gd, ge = path_features(ex.lattice, ex.gold)
+                pn, pd, pe = path_features(ex.lattice, pred)
                 wn -= lr * free_n * (gn - pn)
+                wd -= lr * (gd - pd)
                 we -= lr * free_e * (ge - pe)
             wn -= lr * prior * (wn - wn0)
+            wd -= lr * prior * (wd - wd0)
             we -= lr * prior * (we - we0)
             sn += wn
+            sd += wd
             se += we
             count += 1
-    wn, we = sn / count, se / count
-    return dict(zip(NODE_FEATURES, map(float, wn))) | dict(zip(EDGE_FEATURES, map(float, we)))
+    return as_dict(sn / count, sd / count, se / count)
 
 
 def save_style(w: dict[str, float], note: str = "") -> None:

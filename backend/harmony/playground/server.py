@@ -288,6 +288,7 @@ def _studio_payload(paths, names, melody, beats, voice: dict, job_id: str | None
     rng = _parse_voice_profile(voice)
     timed = [n for n in melody if "t0" in n and "t1" in n]
     listener, f0 = _listener(job_id)
+    personal = _song_personal(timed)
     out = []
     for p, name in zip(paths, names):
         d = p.to_dict()
@@ -305,7 +306,7 @@ def _studio_payload(paths, names, melody, beats, voice: dict, job_id: str | None
                 tones = list(ch.tones) if ch is not None else []
                 return chord_scene(tones, int(n["pitch"]), _lead_hz(f0, n))
             d["backing"] = "pad"
-        d["parts"] = {arr: plan_parts(timed, chord_at, p.key, rng, arr, scene_for) for arr in ARRANGEMENTS}
+        d["parts"] = {arr: plan_parts(timed, chord_at, p.key, rng, arr, scene_for, personal=personal) for arr in ARRANGEMENTS}
         if listener is None and name == "Plain" and beats:
             # A cappella: the chords were only a guess; the voices now spell the
             # real ones. Re-label (and re-voice the pad) so nothing contradicts.
@@ -367,7 +368,10 @@ def api_options(req: dict) -> dict:
         d["name"] = name
     arrangements = {k: {"label": v["label"], "parts": [{"id": pid, "label": lbl} for pid, lbl, _, _ in v["parts"]]}
                     for k, v in ARRANGEMENTS.items()}
-    return {"base": base_symbols, "paths": payload, "arrangements": arrangements}
+    from backend.harmony import neural
+
+    return {"base": base_symbols, "paths": payload, "arrangements": arrangements,
+            "song": neural.song_fingerprint([n for n in melody if "t0" in n])}
 
 
 _render_cache: dict[tuple, bytes] = {}
@@ -395,10 +399,28 @@ def api_render(req: dict) -> bytes:
 FEEDBACK_DIR = HERE.parents[2] / "listen"
 
 
+def _personal_path(song: str) -> Path:
+    return FEEDBACK_DIR / f"personal-{song}.json"
+
+
+def _song_personal(notes) -> dict | None:
+    """This song's adjustments learned from the user's fixes, if any."""
+    from backend.harmony import neural
+
+    if not notes or neural.base_model() is None:
+        return None
+    p = _personal_path(neural.song_fingerprint(notes))
+    try:
+        return json.loads(p.read_text()) if p.exists() else None
+    except ValueError:
+        return None
+
+
 def _examples_from_feedback(fb: dict) -> list:
     """Training examples from one feedback file: every lyric line the user
     touched (or all lines, for a fully labelled example), per labelled part."""
-    from backend.harmony.harmonizer import ARRANGEMENTS as ARR, make_example
+    from backend.harmony import neural
+    from backend.harmony.harmonizer import ARRANGEMENTS as ARR, NET_WINDOW, make_example
     from backend.harmony.reharmonize import NOTE_NAMES
 
     notes, parts = fb["notes"], fb["parts"]
@@ -427,29 +449,46 @@ def _examples_from_feedback(fb: dict) -> list:
                 mel = [notes[i] for i in idx]
                 gold = [int(parts[pid][i]["pitch"]) for i in idx]
                 others = [[v[i] for i in idx] for v in done.values()]
-                out.append(make_example(mel, chord_at, key, voice, side, target, gold, scene_for, others))
+                out.append(make_example(mel, chord_at, key, voice, side, target, gold, scene_for, others,
+                                        max_iv=NET_WINDOW if neural.base_model() is not None else None))
         done[pid] = [int(h["pitch"]) for h in parts[pid]]
     return out
 
 
-def learn_style() -> dict:
-    """Refit the harmony style from every feedback file the user has sent."""
+def learn_style(song: str | None = None) -> dict:
+    """Refit from the user's fixes. With the learned base model, fixes are a
+    per-song layer (they only reshape that song); otherwise the old rule style."""
+    from backend.harmony import neural
     from backend.harmony.harmonizer import DEFAULT_WEIGHTS, agreement, fit_style, save_style
 
     files = sorted(p for p in FEEDBACK_DIR.glob("feedback-*.json") if p.name != "feedback-latest.json")
     examples = []
     for f in files:
         try:
-            examples += _examples_from_feedback(json.loads(f.read_text()))
+            fb = json.loads(f.read_text())
+            if song is not None and neural.song_fingerprint(fb["notes"]) != song:
+                continue
+            examples += _examples_from_feedback(fb)
         except (KeyError, ValueError, IndexError) as e:
             sys.stderr.write(f"skipping {f.name}: {e}\n")
     if not examples:
         return {"examples": 0}
-    before = agreement(examples, DEFAULT_WEIGHTS)
-    w = fit_style(examples)
     n_notes = sum(len(e.gold) for e in examples)
-    save_style(w, note=f"learned from {len(files)} feedback file(s), {n_notes} labelled notes")
-    return {"examples": len(examples), "notes": n_notes, "before": round(before, 3), "after": round(agreement(examples, w), 3)}
+    net = neural.base_model()
+    if net is not None and song is not None:
+        # General rules come from the base model (thousands of songs); the
+        # user's fixes are this song's arrangement choices, applied to it only.
+        before = neural.personal_agreement(examples, net, None)
+        personal = neural.fit_personal(examples, net)
+        personal["note"] = f"your fixes for this song ({n_notes} notes)"
+        _personal_path(song).write_text(json.dumps(personal, indent=1))
+        after = neural.personal_agreement(examples, net, personal)
+    else:
+        before = agreement(examples, DEFAULT_WEIGHTS)
+        w = fit_style(examples)
+        save_style(w, note=f"learned from {len(files)} feedback file(s), {n_notes} labelled notes")
+        after = agreement(examples, w)
+    return {"examples": len(examples), "notes": n_notes, "before": round(before, 3), "after": round(after, 3)}
 
 
 def api_feedback(req: dict) -> dict:
@@ -461,17 +500,28 @@ def api_feedback(req: dict) -> dict:
     data = json.dumps(req, indent=1)
     (FEEDBACK_DIR / f"feedback-{stamp}.json").write_text(data)
     (FEEDBACK_DIR / "feedback-latest.json").write_text(data)
-    return {"saved": f"listen/feedback-{stamp}.json", "changes": len(req.get("changes", [])), "learned": learn_style()}
+    from backend.harmony import neural
+
+    song = neural.song_fingerprint(req["notes"])
+    return {"saved": f"listen/feedback-{stamp}.json", "changes": len(req.get("changes", [])), "song": song,
+            "learned": learn_style(song)}
 
 
-def api_style(reset: bool = False) -> dict:
+def api_style(song: str | None = None, reset: bool = False) -> dict:
+    from backend.harmony import neural
     from backend.harmony.harmonizer import STYLE_PATH
 
-    if reset and STYLE_PATH.exists():
-        STYLE_PATH.unlink()
-    if STYLE_PATH.exists():
-        return {"learned": True, "note": json.loads(STYLE_PATH.read_text()).get("note", "")}
-    return {"learned": False, "note": "default style"}
+    targets = [_personal_path(song)] if song else []
+    if reset:
+        for p in targets + [STYLE_PATH, neural.PERSONAL_PATH]:
+            if p.exists():
+                p.unlink()
+    net = neural.base_model()
+    base = (f"harmony learned from {net.meta.get('songs', '?')} real arrangements" if net is not None else "hand-set rules")
+    if song and _personal_path(song).exists():
+        note = json.loads(_personal_path(song).read_text()).get("note", "")
+        return {"learned": True, "note": f"{base} + {note}"}
+    return {"learned": False, "note": base}
 
 
 def api_lyrics(req: dict) -> dict:
@@ -521,7 +571,7 @@ class Handler(BaseHTTPRequestHandler):
             if path in PAGES:
                 self._send(200, (HERE / PAGES[path]).read_bytes(), "text/html; charset=utf-8")
             elif path == "/api/style":
-                self._json(200, api_style())
+                self._json(200, api_style(parse_qs(urlparse(self.path).query).get("song", [None])[0]))
             elif path == "/api/meta":
                 self._json(200, {"lenses": LENSES, "styles": HARMONY_STYLES})
             elif len(parts) == 3 and parts[:2] == ["api", "job"]:
@@ -549,7 +599,7 @@ class Handler(BaseHTTPRequestHandler):
             elif url.path == "/api/render":
                 self._send(200, api_render(json.loads(body or b"{}")), "audio/wav")
             elif url.path == "/api/style/reset":
-                self._json(200, api_style(reset=True))
+                self._json(200, api_style(parse_qs(url.query).get("song", [None])[0], reset=True))
             elif url.path == "/api/feedback":
                 self._json(200, api_feedback(json.loads(body or b"{}")))
             elif url.path == "/api/lyrics":
