@@ -578,6 +578,33 @@ def _lens_transition(palette: dict[str, float], tonic: int) -> np.ndarray:
     return B
 
 
+def _plain_prior(tonic: int, mode: str) -> np.ndarray:
+    """Default-harmony prior for beats with no detected chord (bare melody).
+
+    With chords given, the anchor keeps things grounded. With only a melody,
+    emission ties are common (C vs Cm over a lone C; Am7 "explains" C-E-G-A),
+    so prefer what a musician would reach for first: diatonic triads, the
+    primary chords, and leave sus/dim/7ths to the lenses.
+    """
+    home, _ = _scales(tonic, mode)
+    primary = (0, 5, 7)
+    secondary = (2, 9, 4) if mode == "major" else (3, 8, 10)
+    prior = np.zeros(N_CAND)
+    for i, c in enumerate(CANDIDATES):
+        deg = (c.root - tonic) % 12
+        prior[i] += 0.8 * (c.tones <= home)
+        prior[i] += 0.3 * (deg in primary) + 0.15 * (deg in secondary)
+        prior[i] -= {"sus4": 0.4, "dim": 0.3, "7": 0.15, "maj7": 0.2, "min7": 0.2}.get(c.quality, 0.0)
+    return prior
+
+
+def _tonic_index(tonic: int, mode: str) -> int:
+    return Chord(tonic, "maj" if mode == "major" else "min").index
+
+
+W_CADENCE = 1.5  # bare melody: end on the tonic chord
+
+
 def _density_change_cost(density: float | None) -> float:
     if density is None:
         return CHANGE_COST
@@ -709,10 +736,16 @@ def explain_progression(
 
 
 def _k_best_viterbi(
-    E: np.ndarray, Tr: np.ndarray, lam: np.ndarray, k: int, bonus: np.ndarray | None = None
+    E: np.ndarray, Tr: np.ndarray, lam: np.ndarray, k: int, bonus: np.ndarray | None = None,
+    frozen: Sequence[bool] | None = None,
 ) -> list[tuple[float, list[int]]]:
+    """k-best Viterbi. `frozen[t]` forbids any chord change into beat t."""
     T, S = E.shape
-    step = (lambda t: -lam[t] * Tr) if bonus is None else (lambda t: -lam[t] * Tr + bonus)
+    base = (lambda t: -lam[t] * Tr) if bonus is None else (lambda t: -lam[t] * Tr + bonus)
+    no_change = np.where(np.eye(S, dtype=bool), 0.0, _LOCKED_OUT)
+
+    def step(t: int) -> np.ndarray:
+        return base(t) + no_change if frozen is not None and frozen[t] else base(t)
     score = np.full((T, S, k), -np.inf)
     bp_state = np.zeros((T, S, k), dtype=np.int32)
     bp_rank = np.zeros((T, S, k), dtype=np.int32)
@@ -775,6 +808,7 @@ def reharmonize(
     key: tuple[int, str] | int | None = None,
     lam: float = LAMBDA,
     n_paths: int = 3,
+    chord_every: int | None = None,
 ) -> list[Reharmonization]:
     """Reharmonize `melody` starting from the detected `chords`.
 
@@ -786,6 +820,8 @@ def reharmonize(
         lens above 0 also lifts novelty to at least LENS_NOVELTY_FLOOR * lens.
     locks: beats the user has decided on. Either {beat: chord} or a list of
         beats to keep as detected. The search works around them.
+    chords: may be empty/None to harmonize a bare melody (e.g. a recording).
+    chord_every: only allow chord changes every N beats (harmonic rhythm).
 
     Returns up to `n_paths` alternatives, best first, each with explanations.
     """
@@ -800,7 +836,7 @@ def reharmonize(
     novelty = max(novelty, LENS_NOVELTY_FLOOR * lens_drive)
 
     notes = _parse_notes(melody)
-    timeline = _parse_timeline(chords, beat_len)
+    timeline = _parse_timeline(chords or [], beat_len)
     end = max([e for _, e, _ in timeline] + [n.end for n in notes] + [beat_len])
     n_beats = max(1, int(math.ceil(end / beat_len - 1e-9)))
     original = [_chord_at(timeline, (t + 0.5) * beat_len) for t in range(n_beats)]
@@ -835,6 +871,15 @@ def reharmonize(
         E[t] -= W_TARGET * (d - target) ** 2                 # ...shaped around a target distance
         E[t, c.index] += (1.0 - novelty) * W_EXACT          # novelty 0 => the detected chord wins
 
+    # Bare melody (no detected chord on a beat): use the plain prior, and
+    # land the final beat on the tonic.
+    bare = [t for t, c in enumerate(original) if c is None]
+    if bare:
+        prior = _plain_prior(tonic, mode)
+        E[bare] += prior[None, :]
+        if original[-1] is None:
+            E[-1, _tonic_index(tonic, mode)] += W_CADENCE
+
     # Tritone lens, substitution half: offer bII7 wherever a dominant 7th was
     # detected. (The resolution half lives in _lens_transition.) Needed because
     # the tritone sub is far in phase space and the novelty shaping resists it.
@@ -867,7 +912,14 @@ def reharmonize(
 
     Tr = transition_matrix(tonic, _density_change_cost(palette.get("density")))
     B = _lens_transition(palette, tonic)
-    raw = _k_best_viterbi(E, Tr, lam_t, k=max(8 * n_paths, 24), bonus=B if B.any() else None)
+    frozen = None
+    if chord_every and chord_every > 1:
+        frozen = [t % chord_every != 0 for t in range(n_beats)]
+        if locks is not None:  # a locked chord must be reachable
+            for t in (locks.keys() if isinstance(locks, dict) else locks):
+                if 0 <= int(t) < n_beats:
+                    frozen[int(t)] = False
+    raw = _k_best_viterbi(E, Tr, lam_t, k=max(8 * n_paths, 24), bonus=B if B.any() else None, frozen=frozen)
     picked = _pick_diverse(raw, n_paths, min_diff=max(1, round(0.1 * n_beats)))
 
     results = []
