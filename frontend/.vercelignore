@@ -1,0 +1,10 @@
+*.py
+samples
+design
+docs
+tests
+placeholder_ui
+public/models
+.venv
+__pycache__
+requirements-dev.txt
