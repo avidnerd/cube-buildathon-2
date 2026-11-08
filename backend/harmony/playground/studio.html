@@ -259,12 +259,9 @@
       <div class="row">
         <span class="muted" id="editCount"></span>
         <button id="resetEdits">Reset</button>
-        <button class="primary" id="sendEdits">Teach it my fixes</button>
       </div>
     </div>
-    <p class="muted" style="margin:0 0 4px"><span id="styleNote"></span> <button class="chip hidden" id="resetStyle">forget my fixes for this song</button></p>
-    <p class="muted" style="margin:0 0 10px">Showing <b id="notesWhich"></b>. Change any harmony note, press ▶ to hear that line with your change.
-      Your fixes are what the algorithm learns from.</p>
+    <p class="muted" style="margin:0 0 10px">Showing <b id="notesWhich"></b>. Change any harmony note, press ▶ to hear that line with your change.</p>
     <div id="notesBody"></div>
   </section>
 
@@ -565,7 +562,7 @@ async function fetchOptions() {
     S.opts = j; S.sel = Math.min(S.sel, j.paths.length - 1); S.renders.clear();
     if (!$("arrs").children.length) buildArrangements();
     S.original.clear();
-    show("optsPanel"); renderOptions(); drawRoll(); renderNotes(); renderKaraokeIdle(); refreshStyle();
+    show("optsPanel"); renderOptions(); drawRoll(); renderNotes(); renderKaraokeIdle();
   } catch (e) { showError(e.message); }
 }
 let debounce;
@@ -784,36 +781,6 @@ function resetEdits() {
   }
   S.renders.clear(); stopAll(); renderNotes(); drawRoll();
 }
-async function sendEdits() {
-  const path = S.opts.paths[S.sel], parts = curParts();
-  const changes = [];
-  for (const pid of partIds()) parts[pid].forEach((h, i) => {
-    const orig = S.original.get(editKey(pid, i)) ?? h.pitch;
-    if (orig !== h.pitch) changes.push({ part: pid, index: i, t0: h.t0, lyric: S.res.notes[i].lyric, lead: S.res.notes[i].pitch, algorithm: orig, yours: h.pitch });
-  });
-  const body = { option: path.name, arrangement: S.arr, key: path.key, chords: path.chords, beats: S.res.beats,
-                 notes: S.res.notes, lines: S.res.lines, parts, changes };
-  $("editCount").textContent = "learning…";
-  const r = await fetch("/api/feedback", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  const j = await r.json();
-  if (!r.ok) { $("editCount").textContent = j.error; return; }
-  const L = j.learned || {};
-  await fetchOptions();   // re-harmonize with the updated style
-  await refreshStyle();
-  $("editCount").textContent = L.notes
-    ? `learned your fixes for this song (${L.notes} notes): ${Math.round(100 * L.before)}% → ${Math.round(100 * L.after)}% match. Other songs are unaffected.`
-    : `saved ${changes.length} fix${changes.length === 1 ? "" : "es"}`;
-}
-async function refreshStyle() {
-  const j = await (await fetch("/api/style" + (S.opts?.song ? `?song=${S.opts.song}` : ""))).json();
-  $("styleNote").textContent = j.learned ? `Style: ${j.note}` : "Style: default";
-  show("resetStyle", j.learned);
-}
-async function resetStyle() {
-  await fetch("/api/style/reset" + (S.opts?.song ? `?song=${S.opts.song}` : ""), { method: "POST" });
-  await refreshStyle(); await fetchOptions();
-}
-
 // ------------------------------------------------------------------ karaoke
 function partNotes() {
   if (S.part === "melody" || !curParts()[S.part]) return S.res.notes;
@@ -1101,9 +1068,7 @@ async function init() {
   $("sing").onclick = () => sing();
   $("lyricsApply").onclick = applyLyrics;
   $("resetEdits").onclick = resetEdits;
-  $("sendEdits").onclick = sendEdits;
-  $("resetStyle").onclick = resetStyle;
-  refreshStyle();
+
 
   for (const k of Object.keys(meta.lenses)) {
     if (k === "density") continue;
