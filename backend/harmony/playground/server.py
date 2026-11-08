@@ -12,6 +12,7 @@ API
     GET  /api/job/<id>                    progress + result
     GET  /api/job/<id>/audio/<stem>.wav   vocals | accompaniment
     POST /api/options      {melody, chords?, novelty, palette, locks, voice, beats_per_bar, chord_every}
+    POST /api/render       {job, melody, part} -> WAV: the lead's voice singing the part
     POST /api/lyrics       {notes, text}  -> notes with typed lyrics + lines
     POST /api/reharmonize  {melody, chords, ...}   (manual page)
 """
@@ -31,8 +32,9 @@ from urllib.parse import parse_qs, urlparse
 
 import numpy as np
 
-from backend.harmony.beats import resample, track_beats
+from backend.harmony.beats import BeatGrid, resample, track_beats
 from backend.harmony.chords import detect_chords
+from backend.harmony.harmonizer import ARRANGEMENTS, plan_parts, render_part
 from backend.harmony.lyrics import (
     attach_lyrics,
     hear_words,
@@ -47,6 +49,7 @@ from backend.harmony.reharmonize import (
     parse_chord,
     reharmonize,
 )
+from backend.harmony.tis import progression_tension
 from backend.harmony.transcribe import transcribe
 
 HERE = Path(__file__).parent
@@ -126,6 +129,8 @@ def analyze(job: dict, x: np.ndarray, sr: int, source: str, bpm: float | None, o
             tr = transcribe(v16, PITCH_SR, bpm or 90, align_first_note=True)
         if not tr.notes:
             raise ValueError("didn't hear a melody. Is there singing in this audio?")
+        job["audio"]["vocals"] = (vocals, vsr)          # source for harmony in the lead's voice
+        job["f0"] = (tr.times, tr.f0_hz())
         result = tr.to_dict()
         n_beats = int(np.ceil(max(n["start"] + n["duration"] for n in tr.notes))) + 1
 
@@ -244,6 +249,36 @@ def _paths_payload(paths, melody, voice) -> list[dict]:
     return out
 
 
+def _chord_at_fn(chords: list, beats: list[float] | None):
+    """time (s) -> Chord, from per-beat chords and the song's beat times."""
+    parsed = [parse_chord(c) if not hasattr(c, "tones") else c for c in chords]
+    grid = BeatGrid(np.asarray(beats, dtype=float)) if beats and len(beats) >= 2 else None
+
+    def at(t: float):
+        if not parsed:
+            return None
+        b = int(np.floor(grid.to_beats(t))) if grid is not None else 0
+        return parsed[min(max(b, 0), len(parsed) - 1)]
+    return at
+
+
+def _studio_payload(paths, melody, beats, voice: dict) -> list[dict]:
+    from backend.harmony.reharmonize import _parse_voice_profile
+
+    rng = _parse_voice_profile(voice)
+    timed = [n for n in melody if "t0" in n and "t1" in n]
+    out = []
+    for p in paths:
+        d = p.to_dict()
+        for seg in d["timeline"]:
+            seg["voicing"] = _voicing(seg["symbol"])
+        chord_at = _chord_at_fn(p.chords, beats)
+        d["parts"] = {arr: plan_parts(timed, chord_at, p.key, rng, arr) for arr in ARRANGEMENTS}
+        d["tension"] = round(progression_tension(p.chords, *p.key), 3)
+        out.append(d)
+    return out
+
+
 def api_options(req: dict) -> dict:
     melody = req["melody"]
     if not melody:
@@ -281,10 +316,34 @@ def api_options(req: dict) -> dict:
         if fresh:
             chosen.append(fresh[0])
             names.append(name)
-    payload = _paths_payload(chosen, melody, req["voice"])
+    payload = _studio_payload(chosen, melody, req.get("beats"), req["voice"])
     for d, name in zip(payload, names):
         d["name"] = name
-    return {"base": base_symbols, "paths": payload}
+    arrangements = {k: {"label": v["label"], "parts": [{"id": pid, "label": lbl} for pid, lbl, _, _ in v["parts"]]}
+                    for k, v in ARRANGEMENTS.items()}
+    return {"base": base_symbols, "paths": payload, "arrangements": arrangements}
+
+
+_render_cache: dict[tuple, bytes] = {}
+
+
+def api_render(req: dict) -> bytes:
+    """The lead's own voice re-pitched onto a harmony part (WAV bytes)."""
+    job = _jobs.get(req["job"])
+    if job is None or "f0" not in job or "vocals" not in job["audio"]:
+        raise KeyError("no vocals for this job")
+    melody, part = req["melody"], req["part"]
+    if len(melody) != len(part):
+        raise ValueError("melody and part must have the same notes")
+    key = (req["job"], tuple((round(m["t0"], 3), m["pitch"], h["pitch"]) for m, h in zip(melody, part)))
+    if key not in _render_cache:
+        vocals, sr = job["audio"]["vocals"]
+        times, hz = job["f0"]
+        y = render_part(vocals, sr, times, hz, melody, part)
+        if len(_render_cache) > 64:
+            _render_cache.clear()
+        _render_cache[key] = wav_bytes(y.astype(np.float32), sr)
+    return _render_cache[key]
 
 
 def api_lyrics(req: dict) -> dict:
@@ -357,6 +416,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(200, api_analyze(parse_qs(url.query), body))
             elif url.path == "/api/options":
                 self._json(200, api_options(json.loads(body or b"{}")))
+            elif url.path == "/api/render":
+                self._send(200, api_render(json.loads(body or b"{}")), "audio/wav")
             elif url.path == "/api/lyrics":
                 self._json(200, api_lyrics(json.loads(body or b"{}")))
             elif url.path == "/api/reharmonize":

@@ -1,0 +1,124 @@
+import numpy as np
+import pytest
+
+from backend.harmony.harmonizer import ARRANGEMENTS, plan_part, plan_parts, psola, render_part, shift_curve
+from backend.harmony.reharmonize import parse_chord
+from backend.harmony.tis import consonance, chroma_of, progression_tension
+from backend.harmony.transcribe import yin
+
+SR = 22050
+
+
+def tone(f0, dur, sr=SR, vib=0.0):
+    t = np.arange(int(dur * sr)) / sr
+    f = f0 * 2 ** (vib * np.sin(2 * np.pi * 5.5 * t) / 1200)
+    ph = 2 * np.pi * np.cumsum(f) / sr
+    return sum((0.6 ** k) * np.sin((k + 1) * ph) for k in range(6)) * 0.3
+
+
+def melody_notes(pitches, dur=0.5, gap=0.02, start=0.2):
+    out, t = [], start
+    for p in pitches:
+        out.append({"pitch": p, "t0": t, "t1": t + dur - gap, "lyric": f"la{p}"})
+        t += dur
+    return out
+
+
+# --- TIS --------------------------------------------------------------------
+
+def test_tis_consonance_orders_intervals_like_ears():
+    c = lambda iv: float(consonance(chroma_of([0, iv])))
+    assert c(7) > c(4) > c(1)      # fifth > third > semitone
+    assert c(3) > c(6)             # minor third > tritone
+
+
+def test_progression_tension_ii_v_i_calmer_than_chromatic():
+    C = lambda s: [parse_chord(x) for x in s]
+    calm = progression_tension(C(["C", "F", "G", "C"]), 0, "major")
+    tense = progression_tension(C(["C", "F#", "Db7", "B"]), 0, "major")
+    assert calm < tense
+
+
+# --- planning ---------------------------------------------------------------
+
+VOICE = (48, 79, 50, 76)
+C_CHORD = lambda t: parse_chord("C")
+
+
+def test_parts_keep_the_leads_exact_timing_and_words():
+    mel = melody_notes([60, 62, 64, 65, 67, 65, 64, 62, 60])
+    chords = lambda t: parse_chord("C") if t < 2.0 else parse_chord("G7") if t < 3.5 else parse_chord("C")
+    for arr in ARRANGEMENTS:
+        parts = plan_parts(mel, chords, (0, "major"), VOICE, arr)
+        for part in parts.values():
+            assert [(h["t0"], h["t1"], h["lyric"]) for h in part] == [(m["t0"], m["t1"], m["lyric"]) for m in mel]
+
+
+def test_scale_melody_gets_smooth_parallel_thirds():
+    mel = melody_notes([60, 62, 64, 65, 67, 69, 71, 72])
+    part = plan_part(mel, lambda t: None, (0, "major"), VOICE, +1, 3.5)
+    ivs = [h["pitch"] - m["pitch"] for h, m in zip(part, mel)]
+    assert all(iv in (3, 4) for iv in ivs), ivs                       # diatonic thirds
+    assert all(h["pitch"] % 12 in (0, 2, 4, 5, 7, 9, 11) for h in part)  # in key
+    leaps = [abs(b["pitch"] - a["pitch"]) for a, b in zip(part, part[1:])]
+    assert max(leaps) <= 2                                             # stepwise like the melody
+
+
+def test_harmony_lands_on_chord_tones_on_long_notes():
+    mel = melody_notes([64, 67, 72], dur=1.0)  # E G C over C major
+    part = plan_part(mel, C_CHORD, (0, "major"), VOICE, +1, 3.5)
+    assert all(h["pitch"] % 12 in (0, 4, 7) for h in part), [h["pitch"] for h in part]
+    low = plan_part(mel, C_CHORD, (0, "major"), VOICE, -1, 8.5)
+    assert all(h["pitch"] % 12 in (0, 4, 7) for h in low) and all(h["pitch"] < m["pitch"] for h, m in zip(low, mel))
+
+
+def test_parts_stay_in_range():
+    rng = np.random.default_rng(0)
+    mel = melody_notes(list(rng.integers(55, 80, 40)), dur=0.3)
+    for arr in ARRANGEMENTS:
+        for part in plan_parts(mel, C_CHORD, (0, "major"), VOICE, arr).values():
+            assert all(VOICE[0] <= h["pitch"] <= VOICE[1] for h in part)
+
+
+# --- rendering --------------------------------------------------------------
+
+def _f0_track(x, sr):
+    times, f0, _, _ = yin(x, sr)
+    return times, f0
+
+
+@pytest.mark.parametrize("semis", [-9, -4, 3, 4, 7])
+def test_psola_shifts_pitch_and_keeps_timing(semis):
+    x = np.concatenate([np.zeros(int(0.3 * SR)), tone(220.0, 1.2, vib=30), np.zeros(int(0.3 * SR))])
+    times, f0 = _f0_track(x, SR)
+    y = psola(x, SR, times, f0, np.array([0.0, 2.0]), np.array([float(semis), float(semis)]))
+    assert len(y) == len(x)
+    _, f_out, _, _ = yin(y, SR)
+    assert np.nanmedian(f_out) == pytest.approx(220.0 * 2 ** (semis / 12), rel=0.02)
+    # Same on/off times: energy envelope lines up.
+    env = lambda s: np.convolve(s ** 2, np.ones(441) / 441, mode="same") > 1e-3
+    assert np.mean(env(x) == env(y)) > 0.97
+
+
+def test_render_follows_each_notes_interval_with_glides():
+    sr = SR
+    x = np.concatenate([tone(220.0, 0.6), tone(246.94, 0.6)])  # A3 then B3, legato
+    mel = [{"pitch": 57, "t0": 0.0, "t1": 0.6}, {"pitch": 59, "t0": 0.6, "t1": 1.2}]
+    part = [{"pitch": 60}, {"pitch": 62}]                       # 3 semitones up both times
+    times, f0 = _f0_track(x, sr)
+    y = render_part(x, sr, times, f0, mel, part)
+    t_out, f_out, _, _ = yin(y, sr)
+    first = np.nanmedian(f_out[(t_out > 0.15) & (t_out < 0.45)])
+    second = np.nanmedian(f_out[(t_out > 0.75) & (t_out < 1.05)])
+    assert first == pytest.approx(261.63, rel=0.02) and second == pytest.approx(293.66, rel=0.02)
+    # No dropouts at the note boundary (the "chopped" problem).
+    seg = y[int(0.55 * sr): int(0.65 * sr)]
+    frames = np.sqrt(np.mean(seg[: len(seg) // 100 * 100].reshape(-1, 100) ** 2, axis=1))
+    assert frames.min() > 0.3 * frames.max()
+
+
+def test_shift_curve_glides_between_notes():
+    t, s = shift_curve([{"pitch": 60, "t0": 0, "t1": 1}, {"pitch": 60, "t0": 1, "t1": 2}],
+                       [{"pitch": 64}, {"pitch": 63}])
+    assert np.interp(0.5, t, s) == 4 and np.interp(1.5, t, s) == 3
+    assert 3 < np.interp(1.0, t, s) < 4

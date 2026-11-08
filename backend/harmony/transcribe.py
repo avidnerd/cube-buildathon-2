@@ -52,6 +52,10 @@ class Transcription:
     sung_range: tuple[int, int] | None = None
     meta: dict = field(default_factory=dict)
 
+    def f0_hz(self) -> np.ndarray:
+        """The sung pitch track in Hz (tuning restored), nan where unvoiced."""
+        return 440.0 * 2 ** ((self.midi_track + self.tuning_cents / 100.0 - 69) / 12)
+
     def to_dict(self, track_step: int = 2) -> dict:
         track = [
             [round(float(t), 3), None if np.isnan(m) else round(float(m), 2)]
@@ -277,7 +281,13 @@ def estimate_lag(raw: list[RawNote], beats: BeatGrid) -> float:
     return float(np.median(res)) if len(res) >= 3 else 0.0
 
 
-def quantize(raw: list[RawNote], beats: BeatGrid, grid: float = 0.25, legato_gap: float = 0.25) -> list[dict]:
+def quantize(raw: list[RawNote], beats: BeatGrid, grid: float = 0.25) -> list[dict]:
+    """Every sung note, with its real timing (t0/t1, seconds) and a beat
+    position (start/duration) used only to line it up with the chords.
+
+    Nothing is dropped or merged: harmony parts are built note-for-note on the
+    real timing, so the beat values are labels, never playback times.
+    """
     out: list[dict] = []
     for n in raw:
         s = _snap(beats.to_beats(n.t0), grid)
@@ -286,20 +296,7 @@ def quantize(raw: list[RawNote], beats: BeatGrid, grid: float = 0.25, legato_gap
             continue  # sung during the count-in
         s = max(s, 0.0)
         e = max(e, s + grid)
-        if out and s < out[-1]["start"] + out[-1]["duration"]:
-            prev = out[-1]
-            if s <= prev["start"]:          # collided on the grid: keep the longer note
-                if e - s > prev["duration"]:
-                    out[-1] = {"pitch": n.pitch, "start": prev["start"], "duration": e - prev["start"],
-                               "t0": round(n.t0, 3), "t1": round(n.t1, 3)}
-                continue
-            prev["duration"] = s - prev["start"]
         out.append({"pitch": n.pitch, "start": s, "duration": e - s, "t0": round(n.t0, 3), "t1": round(n.t1, 3)})
-    # Close small gaps so harmony parts sound legato rather than clipped.
-    for a, b in zip(out, out[1:]):
-        gap = b["start"] - (a["start"] + a["duration"])
-        if 0 < gap <= legato_gap:
-            a["duration"] += gap
     return out
 
 

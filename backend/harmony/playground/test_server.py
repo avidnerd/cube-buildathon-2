@@ -3,7 +3,11 @@ import os
 import numpy as np
 import pytest
 
-from backend.harmony.playground.server import api_analyze, api_job, api_lyrics, api_options
+import io
+import wave
+
+from backend.harmony.playground.server import api_analyze, api_job, api_lyrics, api_options, api_render
+from backend.harmony.transcribe import yin
 from backend.harmony.test_listen import POP, synth_band
 from backend.harmony.test_reharmonize import TWINKLE
 from backend.harmony.test_transcribe import TWINKLE as SUNG
@@ -30,14 +34,38 @@ def test_mic_recording_to_options():
     res = _analyze({"sr": 44100, "channels": 1, "source": "mic", "bpm": 96, "offset": offset, "lyrics": 0}, y)
     assert [n["pitch"] for n in res["notes"]] == [p for p, _, _ in SUNG]
     assert res["has_music"] is False and res["chords"] is None
-    out = api_options({"melody": res["notes"], "voice": VOICE})
+    out = api_options({"melody": res["notes"], "voice": VOICE, "beats": res["beats"]})
     assert out["base"][:4] == ["C", "C", "C", "C"] and out["base"][-1] == "C"
     assert [p["name"] for p in out["paths"]] == ["Plain", "Lush", "Twist"]
     assert len({tuple(p["chords"]) for p in out["paths"]}) == 3
+    assert all(0 <= p["tension"] <= 1 for p in out["paths"])
     for p in out["paths"]:
-        for style in p["harmony"].values():
-            for track in (style["third_above"], style["sixth_below"]):
-                assert all(VOICE["low"] <= n["pitch"] <= VOICE["high"] for n in track)
+        for parts in p["parts"].values():
+            for part in parts.values():
+                assert all(VOICE["low"] <= n["pitch"] <= VOICE["high"] for n in part)
+                # Same notes, same real timing as the lead: they sing together.
+                assert [(n["t0"], n["t1"]) for n in part] == [(n["t0"], n["t1"]) for n in res["notes"]]
+
+
+def test_render_is_the_lead_singing_the_harmony():
+    y, offset = synth_voice(SUNG, 96, sr=44100)
+    job = api_analyze({"sr": ["44100"], "channels": ["1"], "source": ["mic"], "bpm": ["96"],
+                       "offset": [str(offset)], "lyrics": ["0"]}, _pcm(y), background=False)
+    res = api_job(job["job"])["result"]
+    out = api_options({"melody": res["notes"], "voice": VOICE, "beats": res["beats"]})
+    part = out["paths"][0]["parts"]["classic"]["high"]
+    wav = api_render({"job": job["job"], "melody": res["notes"], "part": part})
+    with wave.open(io.BytesIO(wav)) as w:
+        sr = w.getframerate()
+        h = np.frombuffer(w.readframes(w.getnframes()), "<i2").astype(np.float64) / 32768
+    assert abs(len(h) - len(y)) < sr * 0.01                     # same length = same timeline
+    times, f0, _, _ = yin(h, sr)
+    for n, hp in zip(res["notes"], part):                        # each note at its harmony pitch, on time
+        mid = (times > n["t0"] + 0.08) & (times < n["t1"] - 0.08)
+        if mid.sum() < 3:
+            continue
+        got = 69 + 12 * np.log2(np.nanmedian(f0[mid]) / 440) - res["tuning_cents"] / 100
+        assert abs(got - hp["pitch"]) < 0.5, (n, hp["pitch"], got)
 
 
 def test_detected_chords_are_the_plain_option():
@@ -58,9 +86,10 @@ def test_options_respect_locks_in_every_option():
 def test_harmony_parts_carry_the_lyrics():
     melody = api_lyrics({"notes": [dict(n, t0=n["start"] / 2, t1=(n["start"] + 1) / 2) for n in TWINKLE],
                          "text": "Twinkle twinkle little star how I wonder what you are"})["notes"]
-    out = api_options({"melody": melody, "voice": VOICE})
-    part = out["paths"][1]["harmony"]["voice_led"]["third_above"]
-    assert [n["lyric"] for n in part] == [n["lyric"] for n in melody]
+    out = api_options({"melody": melody, "voice": VOICE, "beats": [i * 0.5 for i in range(40)]})
+    for parts in out["paths"][1]["parts"].values():
+        for part in parts.values():
+            assert [n["lyric"] for n in part] == [n["lyric"] for n in melody]
 
 
 def test_lyrics_endpoint_builds_lines():
