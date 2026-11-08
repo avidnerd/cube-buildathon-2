@@ -1,5 +1,6 @@
 // Share links. A song is published to Vercel Blob as one WAV per voice plus a
 // song.json, so friends get the real voices even when the engine is offline.
+import { upload } from '@vercel/blob/client';
 import { fetchAudio } from './harmonyApi.js';
 import { emptyProject } from './project.js';
 import { playbackOptions } from './playbackSources.js';
@@ -36,7 +37,6 @@ export function projectFromManifest(m) {
 
 /** Upload every voice, then the song. onProgress(done, total). Returns the link. */
 export async function publishSong(project, { onProgress } = {}) {
-  const { upload } = await import('@vercel/blob/client');
   const id = Array.from(crypto.getRandomValues(new Uint8Array(8)), b => b.toString(16).padStart(2, '0')).join('');
   const put = (name, body, type) => upload(`shares/${id}/${name}`, new Blob([body], { type }), { access: 'public', handleUploadUrl: `${siteOrigin()}/api/blob-upload`, contentType: type });
   const { tracks, tempo } = playbackOptions(project, project.tracks, {}, NO_MIX);
