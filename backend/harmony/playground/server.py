@@ -452,6 +452,8 @@ def _examples_from_feedback(fb: dict) -> list:
     from backend.harmony.reharmonize import NOTE_NAMES
 
     notes, parts = fb["notes"], fb["parts"]
+    if str(fb.get("arrangement", "")).startswith("satb"):
+        return []   # four-part voicing is rule-based; fixes there don't train the two-part model
     arr = ARR[fb.get("arrangement", "classic")]
     key = (NOTE_NAMES.index(fb["key"]["tonic"]), fb["key"]["mode"])
     chord_at = _chord_at_fn(fb["chords"], fb["beats"])

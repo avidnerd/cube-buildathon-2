@@ -452,6 +452,12 @@ function renderStages(j) {
 
 // ------------------------------------------------------------------ parts
 const curParts = () => S.opts.paths[S.sel].parts[S.arr];
+const isSATB = () => S.arr.startsWith("satb");
+// One colour per voice, in any arrangement.
+function partColor(pid) {
+  return { high: css("--upper"), low: css("--lower"), soprano: css("--upper"), alto: "#d946ef", tenor: "#3b82f6", bass: css("--lower"),
+           melody: css("--melody") }[pid] || css("--upper");
+}
 const partIds = () => S.opts.arrangements[S.arr].parts.map((p) => p.id);
 // The lead's voice re-pitched onto a part, rendered server-side (PSOLA), same timeline as the song.
 async function renderBuf(pid) {
@@ -512,8 +518,8 @@ function drawRoll() {
   const g = cv.getContext("2d"); g.scale(dpr, dpr); g.clearRect(0, 0, W, H);
   if (!S.res) return;
   const mel = S.res.notes, path = S.opts?.paths[S.sel], h = path?.parts[S.arr];
-  const up = h ? h.high : [], lo_ = h ? h.low : [];
-  const all = [...mel, ...up, ...lo_].map((n) => n.pitch);
+  const allParts = h ? Object.entries(h) : [];
+  const all = [...mel, ...allParts.flatMap(([, ns]) => ns)].map((n) => n.pitch);
   const lo = Math.min(...all) - 2, hi = Math.max(...all) + 2;
   const t0 = noteT0(mel[0]) - 0.5, t1 = noteT1(mel[mel.length - 1]) + 0.5;
   const left = 34, top = 20;
@@ -534,7 +540,8 @@ function drawRoll() {
   const bars = (ns, color, a) => { g.fillStyle = color; g.globalAlpha = a;
     for (const n of ns) { const a0 = x(noteT0(n)), w = Math.max(2, x(noteT1(n)) - a0 - 1); g.beginPath(); g.roundRect(a0, y(n.pitch) + 1, w, Math.max(3, rowH - 2), 2); g.fill(); }
     g.globalAlpha = 1; };
-  bars(lo_, css("--lower"), 0.8); bars(up, css("--upper"), 0.8); bars(mel, css("--melody"), 0.7);
+  for (const [pid, ns] of allParts) bars(ns, partColor(pid), 0.8);
+  if (!isSATB()) bars(mel, css("--melody"), 0.7);
   if (S.playing?.rollT != null) { g.fillStyle = css("--accent"); g.fillRect(x(S.playing.rollT), top, 2, H - top); }
 }
 
@@ -699,7 +706,7 @@ async function preview(range, button) {
   // New chords can't be sung over the original band (it still plays the old ones): use a pad + the lead.
   const overBand = path.backing === "band";
   const nodes = [];
-  if (L === "all") {
+  if (L === "all" && !isSATB()) {
     nodes.push(...startBuffers([[overBand ? S.mix : (S.stems.vocals || S.mix), 0.9]], T, from, bus));
     if (!overBand && S.res.has_music) for (const seg of path.timeline) if (b2t(seg.end) > from)
       for (const p of seg.voicing) nodes.push(tone(bus, p, at(Math.max(from, b2t(seg.start))), b2t(seg.end) - Math.max(from, b2t(seg.start)), "sine", 0.05));
@@ -707,7 +714,7 @@ async function preview(range, button) {
       for (const p of seg.voicing) nodes.push(tone(bus, p, at(b2t(seg.start)), b2t(seg.end) - b2t(seg.start), "sine", 0.04));
   }
   if (L === "lead") nodes.push(...startBuffers([[S.stems.vocals || S.mix, 1.0]], T, from, bus));
-  if (S.mode === "voice") nodes.push(...startBuffers(voices.map((b) => [b, L === "all" ? 0.75 : 1.0]), T, from, bus));
+  if (S.mode === "voice") nodes.push(...startBuffers(voices.map((b) => [b, L !== "all" ? 1.0 : isSATB() ? 0.5 : 0.75]), T, from, bus));
   else for (const pid of pids) nodes.push(...phraseTones(bus, parts[pid], at, from, "triangle", L === "all" ? 0.11 : 0.16));
   S.playing = { nodes, kind: "preview", button, label };
   button.textContent = "■";
@@ -734,7 +741,10 @@ function renderNotes() {
     box.innerHTML = `<div class="head"><button class="chip" data-line-play>▶</button><b>${lineText(mel, line.notes) || "♪"}</b><span class="muted">${t0.toFixed(1)}s</span></div>`;
     box.querySelector("[data-line-play]").onclick = (e) => preview([Math.max(0, t0 - 0.3), t1 + 0.4], e.currentTarget);
     const grid = document.createElement("div"); grid.className = "ngrid";
-    const rows = [["lyric", "Lyric"], ["chord", "Chord"], [ids[0], labels[ids[0]]], ["you", "You"], [ids[1], labels[ids[1]]]];
+    const rows = isSATB()
+      ? [["lyric", "Lyric"], ["chord", "Chord"], ...ids.map((id) => [id, labels[id]]), ["you", "Recorded"]]
+      : [["lyric", "Lyric"], ["chord", "Chord"], [ids[0], labels[ids[0]]], ["you", "You"], [ids[1], labels[ids[1]]]];
+    grid.style.gridTemplateRows = `repeat(${rows.length}, auto)`;
     rows.forEach(([, lab]) => { const d = document.createElement("div"); d.className = "lab"; d.textContent = lab; grid.appendChild(d); });
     for (const i of line.notes) {
       const m = mel[i];
@@ -747,7 +757,8 @@ function renderNotes() {
         const h = parts[pid][i], key = editKey(pid, i);
         if (!S.original.has(key)) S.original.set(key, h.pitch);
         const orig = S.original.get(key), sel = document.createElement("select");
-        sel.className = (pid === ids[0] ? "hi" : "lo") + (h.pitch !== orig ? " edited" : "");
+        sel.className = h.pitch !== orig ? "edited" : "";
+        sel.style.color = partColor(pid);
         for (let p = orig - 7; p <= orig + 7; p++) sel.add(new Option(midiName(p) + (p === orig ? " ·" : ""), p, false, p === h.pitch));
         const prev = i > 0 ? parts[pid][i - 1].pitch : null;
         if (prev === h.pitch && line.notes[0] !== i) sel.classList.add("same");
@@ -858,7 +869,7 @@ async function sing(from) {
   let guideBuf = null;
   // The other voices singing with you: the melody and/or the other harmony part(s).
   const otherPids = S.along === "others" ? partIds().filter((p) => p !== S.part) : [];
-  const otherLead = S.along === "others" && S.part !== "melody";
+  const otherLead = S.along === "others" && S.part !== "melody" && !isSATB();  // in SATB the melody is one of the four parts
   let otherBufs = [];
   try {
     if (S.guide === "voice" || otherPids.length) $("sing").textContent = "rendering…";
@@ -952,7 +963,7 @@ function drawLane(t) {
     for (const n of mel) { const a = x(noteT0(n)), w = x(noteT1(n)) - a; if (a > W || a + w < 0) continue; g.fillRect(a, y(n.pitch) + rowH * 0.35, Math.max(2, w - 2), rowH * 0.3); }
   }
   // your part: bars with syllables
-  const color = S.part === "low" ? css("--lower") : S.part === "melody" ? ink : css("--upper");
+  const color = S.part === "melody" ? ink : partColor(S.part);
   g.font = "600 13px ui-sans-serif, system-ui"; g.textBaseline = "bottom";
   let labelEnd = -Infinity;  // skip labels that would collide; the full line is shown below the lane
   for (const n of notes) {
@@ -1051,7 +1062,7 @@ function buildArrangements() {
 }
 function buildListenPicker() {
   const seg = $("listen"); seg.innerHTML = "";
-  const opts = [["all", "All together"], ["lead", "Melody only"], ...S.opts.arrangements[S.arr].parts.map((p) => [p.id, p.label + " only"])];
+  const opts = [["all", "All together"], ...(isSATB() ? [] : [["lead", "Melody only"]]), ...S.opts.arrangements[S.arr].parts.map((p) => [p.id, p.label + " only"])];
   if (!opts.some(([v]) => v === S.listen)) S.listen = "all";
   for (const [v, label] of opts) {
     const b = document.createElement("button"); b.dataset.v = v; b.textContent = label; b.setAttribute("aria-pressed", v === S.listen);
@@ -1062,7 +1073,7 @@ function buildListenPicker() {
 function buildPartPicker() {
   buildListenPicker();
   const seg = $("part"); seg.innerHTML = "";
-  const parts = [...S.opts.arrangements[S.arr].parts.map((p) => [p.id, p.label]), ["melody", "Melody"]];
+  const parts = [...S.opts.arrangements[S.arr].parts.map((p) => [p.id, p.label]), ...(isSATB() ? [] : [["melody", "Melody"]])];
   if (!parts.some(([id]) => id === S.part)) S.part = parts[0][0];
   for (const [id, label] of parts) {
     const b = document.createElement("button"); b.dataset.v = id; b.textContent = label; b.setAttribute("aria-pressed", id === S.part);

@@ -43,6 +43,11 @@ ARRANGEMENTS = {
     # 4th below the lead, so the three voices spell a full chord.
     "classic": {"label": "3rd above + 4th below (full chord)",
                 "parts": (("high", "Harmony above", +1, 3.5), ("low", "Harmony below", -1, 5.0))},
+    # Four singers. Voiced by satb.py, not by the side/target pairs (the numbers are placeholders).
+    "satb": {"label": "SATB (melody in soprano)",
+             "parts": (("soprano", "Soprano", +1, 0.0), ("alto", "Alto", -1, 0.0), ("tenor", "Tenor", -1, 0.0), ("bass", "Bass", -1, 0.0))},
+    "satb_tenor": {"label": "SATB (melody in tenor)",
+                   "parts": (("soprano", "Soprano", +1, 0.0), ("alto", "Alto", +1, 0.0), ("tenor", "Tenor", +1, 0.0), ("bass", "Bass", -1, 0.0))},
     "close": {"label": "3rds above and below (tight)",
               "parts": (("high", "Harmony above", +1, 3.5), ("low", "Harmony below", -1, 3.5))},
     "stack": {"label": "3rd + 5th above (stacked)",
@@ -415,6 +420,10 @@ def plan_parts(melody, chord_at, key, voice, arrangement: str = "classic",
                scene_for: Callable[[dict], Scene] | None = None,
                weights: dict[str, float] | None = None,
                personal: dict | None = None) -> dict[str, list[dict]]:
+    if arrangement in ("satb", "satb_tenor"):
+        from backend.harmony.satb import plan_satb
+
+        return plan_satb(melody, chord_at, key, "tenor" if arrangement == "satb_tenor" else "soprano")
     arr = ARRANGEMENTS[arrangement]
     weights = weights or load_style()
     if scene_for is not None:  # measure each note's scene once for all parts

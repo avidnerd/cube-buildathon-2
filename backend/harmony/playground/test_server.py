@@ -40,9 +40,9 @@ def test_mic_recording_to_options():
     assert len({tuple(p["chords"]) for p in out["paths"]}) == 3
     assert all(0 <= p["tension"] <= 1 for p in out["paths"])
     for p in out["paths"]:
-        for parts in p["parts"].values():
+        for arr, parts in p["parts"].items():
             for part in parts.values():
-                assert all(VOICE["low"] <= n["pitch"] <= VOICE["high"] for n in part)
+                assert arr.startswith("satb") or all(VOICE["low"] <= n["pitch"] <= VOICE["high"] for n in part)
                 # Same notes, same real timing as the lead: they sing together.
                 assert [(n["t0"], n["t1"]) for n in part] == [(n["t0"], n["t1"]) for n in res["notes"]]
 

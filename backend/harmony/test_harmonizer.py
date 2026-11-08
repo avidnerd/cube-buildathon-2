@@ -103,6 +103,8 @@ def test_parts_stay_in_range():
     rng = np.random.default_rng(0)
     mel = melody_notes(list(rng.integers(55, 80, 40)), dur=0.3)
     for arr in ARRANGEMENTS:
+        if arr.startswith("satb"):
+            continue  # four separate singers, each with a standard voice range (test_satb.py)
         for part in plan_parts(mel, C_CHORD, (0, "major"), VOICE, arr).values():
             assert all(VOICE[0] <= h["pitch"] <= VOICE[1] for h in part)
 
