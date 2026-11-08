@@ -22,6 +22,7 @@ from typing import Sequence
 import numpy as np
 
 from backend.harmony.beats import BeatGrid
+from backend.harmony.tis import scale
 
 FMIN = 70.0     # Hz, below a low bass voice
 FMAX = 1100.0   # Hz, above a soprano C6; also rejects a 2 kHz metronome click
@@ -164,6 +165,7 @@ def _tuning_offset(m: np.ndarray) -> float:
 
 ORNAMENT_S = 0.13      # shorter than this and touching a neighbour = scoop/slide/wobble
 ORNAMENT_SEMITONES = 3
+SCOOP_S = 0.25         # an out-of-key note this short, leading into its neighbour, is a scoop
 
 
 def absorb_ornaments(notes: list[RawNote]) -> list[RawNote]:
@@ -205,6 +207,18 @@ def absorb_ornaments(notes: list[RawNote]) -> list[RawNote]:
             out[i - 1: j + 1] = [merged]
             i -= 1
         i += 1
+    return out
+
+
+def fold_scoops(names: list[int], raw: Sequence, key: tuple[int, str]) -> list[int]:
+    """A short out-of-key note touching the next note, a semitone away, is a scoop
+    into it (the singer arriving from just below), not a note of the tune."""
+    sc = scale(*key)
+    out = list(names)
+    for i in range(len(out) - 1):
+        if (raw[i].t1 - raw[i].t0 < SCOOP_S and raw[i + 1].t0 - raw[i].t1 < 0.06
+                and out[i] % 12 not in sc and abs(out[i + 1] - out[i]) == 1):
+            out[i] = out[i + 1]
     return out
 
 
@@ -477,6 +491,7 @@ def transcribe(samples: np.ndarray, sr: int, bpm: float | None = None, offset: f
     raw = absorb_ornaments(split_level_changes(raw, times, midi))  # splitting can expose new scoop fragments
     # Name the notes with drift + key awareness instead of plain rounding.
     names, _key, drift = name_notes([n.midi for n in raw], [n.t1 - n.t0 for n in raw])
+    names = fold_scoops(names, raw, _key)
     raw = [RawNote(n.t0, n.t1, q, n.midi) for n, q in zip(raw, names)]
     lag_ms = 0.0
     if beat_grid is None and bpm is None:

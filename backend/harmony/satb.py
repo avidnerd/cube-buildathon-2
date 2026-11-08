@@ -33,10 +33,11 @@ RANGES = {"soprano": (60, 81), "alto": (55, 74), "tenor": (48, 69), "bass": (40,
 MELODY_CENTER = {"soprano": 69, "tenor": 58}
 
 W_NOT_CHORD = 1.5       # a passing, in-key note that isn't in the chord (scaled by how long it's held)
-W_MISSING = {"root": 3.0, "third": 3.0, "fifth": 0.5, "seventh": 0.3}
+W_MISSING = {"root": 7.0, "third": 7.0, "fifth": 0.5, "seventh": 0.3}
 W_DOUBLE_THIRD = 1.5
 W_DOUBLE_LEADING = 3.0
-W_CLASH = 3.0           # 2nd/tritone against the melody (scaled by how long it's held)
+W_BASS_RUB = 2.0        # a bass note a 2nd/7th/tritone from the melody: take another chord tone
+W_CLASH = 6.0           # 2nd/tritone against the melody (scaled by how long it's held)
 W_RUB = 1.5             # 2nd between the two free voices
 W_SPACING = 2.0         # more than an octave between adjacent upper voices
 W_REGISTER = 0.03       # per semitone from the middle of the voice's range
@@ -63,9 +64,10 @@ def _chord_roles(ch: Chord) -> dict[int, str]:
     return roles
 
 
-def _plan_bass(melody, chords, upper_limit: Sequence[int]) -> list[int]:
+def _plan_bass(melody, chords, upper_limit: Sequence[int], tune: Sequence[int] | None = None) -> list[int]:
     lo, hi = RANGES["bass"]
     n = len(melody)
+    tune = upper_limit if tune is None else tune
     cands, node = [], []
     for i, (m, ch) in enumerate(zip(melody, chords)):
         roles = _chord_roles(ch)
@@ -77,6 +79,8 @@ def _plan_bass(melody, chords, upper_limit: Sequence[int]) -> list[int]:
             c = {"root": 0.0, "third": 1.5, "fifth": 1.0, "seventh": 2.5}[role]
             if i in (0, n - 1) and role != "root":
                 c += 3.0
+            if abs(int(p) - tune[i]) % 12 in (1, 2, 6, 10, 11):
+                c += W_BASS_RUB * min(1.0, (m["t1"] - m["t0"]) / HELD_FULL_S)
             cost.append(c + 0.04 * abs(p - 48))           # sit low, around C3
         cands.append(opts)
         node.append(np.array(cost))
@@ -110,7 +114,7 @@ def plan_satb(melody: Sequence[dict], chord_at: Callable[[float], Chord | None],
     shift = melody_octave_shift(melody, melody_voice)
     tune = [int(n["pitch"]) + shift for n in melody]
     chords = [chord_at(0.5 * (n["t0"] + n["t1"])) or home for n in melody]
-    bass = _plan_bass(melody, chords, tune)
+    bass = _plan_bass(melody, chords, tune, tune)
 
     mi = VOICES.index(melody_voice)
     free = [i for i in range(3) if i != mi]         # the two voices to choose (bass is index 3)
@@ -155,7 +159,9 @@ def plan_satb(melody: Sequence[dict], chord_at: Callable[[float], Chord | None],
             lo, hi = RANGES[VOICES[v]]
             cost += W_REGISTER * np.abs(x - (lo + hi) / 2)
             cost += 2.0 * (x == m)                                    # unison with the melody
-        cost += W_RUB * held * np.isin(np.abs(V[:, free[0]] - V[:, free[1]]) % 12, (1, 2, 10, 11))
+        cost += W_RUB * held * np.isin(np.abs(V[:, free[0]] - V[:, free[1]]) % 12, (1, 2, 6, 10, 11))
+        for v in free:      # against the bass too (the melody's are counted above)
+            cost += W_CLASH * held * np.isin(np.abs(V[:, v] - V[:, 3]) % 12, (1, 2, 6, 11)) * (1 - 0.5 * np.isin(V[:, v] % 12, list(roles)))
         cost += W_SPACING * ((V[:, 0] - V[:, 1] > 12).astype(float) + (V[:, 1] - V[:, 2] > 12))
         states.append(V)
         node.append(cost)

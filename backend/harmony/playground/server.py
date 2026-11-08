@@ -58,13 +58,10 @@ DEFAULT_PORT = 8765
 MAX_AUDIO_SECONDS = 600
 PITCH_SR = 16000
 
-KEY_TIE = 0.015  # relative major/minor readings within 1.5% of each other count as a tie
 
 # (name, lens palette, minimum novelty) for the three options.
 FLAVOURS = (
     ("Plain", {}, 0.0),
-    ("Lush", {"color": 1.0, "secondary": 0.7}, 0.3),
-    ("Twist", {"borrowed": 1.0, "suspense": 0.5}, 0.55),  # parallel-mode chords: darker in major, brighter in minor
 )
 
 
@@ -285,7 +282,7 @@ def _lead_hz(f0, n) -> float | None:
 
 
 def _studio_payload(paths, names, melody, beats, voice: dict, job_id: str | None = None,
-                    every: int | None = None, phase: int = 0) -> list[dict]:
+                    every: int | None = None, phase: int = 0, voice_chord_at=None) -> list[dict]:
     from backend.harmony.reharmonize import _parse_voice_profile
 
     rng = _parse_voice_profile(voice)
@@ -298,6 +295,10 @@ def _studio_payload(paths, names, melody, beats, voice: dict, job_id: str | None
         for seg in d["timeline"]:
             seg["voicing"] = _voicing(seg["symbol"])
         chord_at = _chord_at_fn(p.chords, beats)
+        by_note = voice_chord_at is not None and name == "Plain"
+        if by_note:
+            chord_at = voice_chord_at     # changes on the sung notes, not the beat grid
+            d["note_chords"] = [chord_at(0.5 * (n["t0"] + n["t1"])).name for n in timed]
         if listener is not None and name == "Plain":
             # Sung over the real band: measure what's actually sounding.
             scene_for = lambda n: listener.scene(n["t0"], n["t1"], int(n["pitch"]))  # noqa: E731
@@ -310,7 +311,7 @@ def _studio_payload(paths, names, melody, beats, voice: dict, job_id: str | None
                 return chord_scene(tones, int(n["pitch"]), _lead_hz(f0, n))
             d["backing"] = "pad"
         d["parts"] = {arr: plan_parts(timed, chord_at, p.key, rng, arr, scene_for, personal=personal) for arr in ARRANGEMENTS}
-        if listener is None and name == "Plain" and beats:
+        if listener is None and name == "Plain" and beats and not by_note:
             # A cappella: the chords were only a guess; the voices now spell the
             # real ones. Re-label (and re-voice the pad) so nothing contradicts.
             from backend.harmony.harmonizer import implied_chords
@@ -350,23 +351,14 @@ def api_options(req: dict) -> dict:
     bpb = int(req.get("beats_per_bar", 4))
     ce = req.get("chord_every", "bar")
     every = bpb if ce in ("bar", None) else (int(ce) or None)   # default: one chord per bar
-    phase, song_key, alt = 0, None, None
+    phase, song_key = 0, None
     if every and every > 1 and not req.get("chords"):
-        # Beat 1 is where chord changes fit the melody best, and a major key and
-        # its relative minor share all their notes, so let the fit decide both.
-        first = reharmonize(melody, None, 0.0, beats_per_bar=bpb, chord_every=every, n_paths=1)[0].key
-        t, m = first
-        relative = ((t + 9) % 12, "minor") if m == "major" else ((t + 3) % 12, "major")
-        fits = [(reharmonize(melody, None, 0.0, beats_per_bar=bpb, chord_every=every, phase=p, n_paths=1, key=k)[0].score, k, p)
-                for k in (first, relative) for p in range(every)]
-        # The key estimate decides the main reading. Fit only places beat 1 and spots
-        # a near-tie: it can't overrule the key, since minor chords "explain" major
-        # melodies too easily (Am7 covers C-E-G-A).
-        chosen = max((f for f in fits if f[1] == first), key=lambda x: x[0])
-        other = max((f for f in fits if f[1] == relative), key=lambda x: x[0])
-        _, song_key, phase = chosen
-        if abs(chosen[0] - other[0]) < KEY_TIE * abs(chosen[0]):
-            alt = other  # two readings almost equally good: offer both
+        # The key estimate decides the key (fit can't overrule it: minor chords
+        # "explain" major melodies too easily). Fit only places beat 1.
+        song_key = reharmonize(melody, None, 0.0, beats_per_bar=bpb, chord_every=every, n_paths=1)[0].key
+        fits = [(reharmonize(melody, None, 0.0, beats_per_bar=bpb, chord_every=every, phase=p, n_paths=1, key=song_key)[0].score, p)
+                for p in range(every)]
+        phase = max(fits)[1]
     detected = req.get("chords")
     if detected:
         # The song's own chords are the starting point.
@@ -376,35 +368,43 @@ def api_options(req: dict) -> dict:
         base = reharmonize(melody, None, 0.0, beats_per_bar=bpb, chord_every=every, phase=phase, key=song_key)[0]
         base_chords, base_symbols = base.chords, base.symbols
 
+    voice_chord_at = None
+    timed = [n for n in melody if "t0" in n and "t1" in n]
+    if not detected and req.get("beats") and len(timed) == len(melody) and _listener(req.get("job"))[0] is None:
+        # A cappella: chords from the model trained on real songs.
+        from backend.harmony import melody_chords as mc
+
+        voice_chord_at = mc.chord_at_fn(timed, mc.infer(timed, song_key or base.key))
+        base_chords = mc.per_beat(voice_chord_at, req["beats"], len(base_chords))
+        base_symbols = [c.name for c in base_chords]
+
     locks = {int(k): v for k, v in (req.get("locks") or {}).items()}
     user_palette = req.get("palette") or {}
     user_novelty = float(req.get("novelty", 0))
     chosen, names = [], []
-    alt_base = None
-    if alt is not None and not detected:
-        alt_base = reharmonize(melody, None, 0.0, beats_per_bar=bpb, chord_every=every, phase=alt[2], key=alt[1])[0]
     for name, palette, novelty in FLAVOURS:
         option_locks = dict(locks)
-        use_alt = alt_base is not None and name == "Lush"
+        if name == "Plain" and voice_chord_at is not None:
+            option_locks = dict(enumerate(base_chords)) | locks
         if detected and name == "Plain":
             # A real song's Plain option is exactly its own chords: the reference
             # everything else is compared to. The user's own locks still win.
             option_locks = {t: c for t, c in enumerate(detected) if c != "N.C."} | locks
         cands = reharmonize(
-            melody, alt_base.chords if use_alt else base_chords,
+            melody, base_chords,
             novelty=max(novelty, user_novelty),
             palette={**palette, **user_palette},
             locks=option_locks or None,
             beats_per_bar=bpb,
             chord_every=every,
-            phase=alt[2] if use_alt else phase,
-            key=alt[1] if use_alt else song_key,
+            phase=phase,
+            key=song_key,
         )
         fresh = [c for c in cands if all(c.symbols != o.symbols for o in chosen)]
         if fresh:
             chosen.append(fresh[0])
             names.append(name)
-    payload = _studio_payload(chosen, names, melody, req.get("beats"), req["voice"], req.get("job"), every, phase)
+    payload = _studio_payload(chosen, names, melody, req.get("beats"), req["voice"], req.get("job"), every, phase, voice_chord_at)
     for d, name in zip(payload, names):
         d["name"] = name
     arrangements = {k: {"label": v["label"], "parts": [{"id": pid, "label": lbl} for pid, lbl, _, _ in v["parts"]]}

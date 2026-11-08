@@ -36,8 +36,7 @@ def test_mic_recording_to_options():
     assert res["has_music"] is False and res["chords"] is None
     out = api_options({"melody": res["notes"], "voice": VOICE, "beats": res["beats"]})
     assert out["base"][:4] == ["C", "C", "C", "C"] and out["base"][-1] == "C"
-    assert [p["name"] for p in out["paths"]] == ["Plain", "Lush", "Twist"]
-    assert len({tuple(p["chords"]) for p in out["paths"]}) == 3
+    assert [p["name"] for p in out["paths"]] == ["Plain"]
     assert all(0 <= p["tension"] <= 1 for p in out["paths"])
     for p in out["paths"]:
         for arr, parts in p["parts"].items():
@@ -87,7 +86,7 @@ def test_harmony_parts_carry_the_lyrics():
     melody = api_lyrics({"notes": [dict(n, t0=n["start"] / 2, t1=(n["start"] + 1) / 2) for n in TWINKLE],
                          "text": "Twinkle twinkle little star how I wonder what you are"})["notes"]
     out = api_options({"melody": melody, "voice": VOICE, "beats": [i * 0.5 for i in range(40)]})
-    for parts in out["paths"][1]["parts"].values():
+    for parts in out["paths"][0]["parts"].values():
         for part in parts.values():
             assert [n["lyric"] for n in part] == [n["lyric"] for n in melody]
 

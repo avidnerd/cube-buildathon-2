@@ -41,7 +41,7 @@ ARRANGEMENTS = {
     # A 3rd above and a 6th below are the same note an octave apart, which is
     # thin. With the top part a 3rd above, the chord's remaining note sits a
     # 4th below the lead, so the three voices spell a full chord.
-    "classic": {"label": "3rd above + 4th below (full chord)",
+    "classic": {"label": "3rd above + 4th below (recommended)",
                 "parts": (("high", "Harmony above", +1, 3.5), ("low", "Harmony below", -1, 5.0))},
     # Four singers. Voiced by satb.py, not by the side/target pairs (the numbers are placeholders).
     "satb": {"label": "SATB (melody in soprano)",
@@ -280,7 +280,7 @@ def build_lattice(
         for other in others:
             o = int(other[k])
             F["part_double"] += (pcs == o % 12)
-            F["part_rub"] += held * np.isin(np.abs(opts - o) % 12, (1, 2, 10, 11))
+            F["part_rub"] += held * (np.isin(np.abs(opts - o) % 12, (1, 2, 10, 11)) + 4.0 * (np.abs(opts - o) % 12 == 6))
         if others:
             have = {m % 12} | {int(o[k]) % 12 for o in others}
             for q, pc in enumerate(pcs):

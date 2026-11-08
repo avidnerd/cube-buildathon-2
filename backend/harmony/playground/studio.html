@@ -224,7 +224,6 @@
       </div>
     </div>
     <div class="options" id="options"></div>
-    <div class="muted" style="margin-top:6px">Click a chord to keep it 🔒. The options rearrange around it.</div>
     <div class="controls">
       <div class="k">Listen to</div>
       <div class="seg" id="listen"></div>
@@ -239,12 +238,6 @@
         <option value="mid">Mid voice (tenor/alto)</option>
         <option value="high">High voice (soprano)</option>
       </select></div>
-      <div class="k">Adventure</div>
-      <div class="row"><input type="range" id="novelty" min="0" max="1" step="0.05" value="0" style="width:200px"><span class="muted" id="noveltyOut">safe</span></div>
-      <div class="k">Try a flavour</div>
-      <div class="row" id="lenses"></div>
-      <div class="k">Chords change</div>
-      <div class="seg" id="every"><button data-v="1" aria-pressed="false">every beat</button><button data-v="2" aria-pressed="false">every 2 beats</button><button data-v="bar" aria-pressed="true">every bar</button><button data-v="half" aria-pressed="false">every 2 bars</button></div>
     </div>
     <details style="margin-top:12px">
       <summary class="muted" style="cursor:pointer">Why these chords?</summary>
@@ -255,7 +248,7 @@
   <!-- Notes editor -->
   <section class="panel hidden" id="notesPanel">
     <div class="row between" style="margin-bottom:6px">
-      <h2 style="margin:0">Notes · see and fix the harmony</h2>
+      <h2 style="margin:0">Notes</h2>
       <div class="row">
         <span class="muted" id="editCount"></span>
         <button id="resetEdits">Reset</button>
@@ -552,7 +545,7 @@ function voiceRange() {
 async function fetchOptions() {
   if (!S.res) return;
   const body = {
-    melody: S.res.notes, chords: S.res.chords, novelty: +$("novelty").value, palette: S.palette, locks: S.locks,
+    melody: S.res.notes, chords: S.res.chords, novelty: 0, palette: {}, locks: {},
     voice: voiceRange(), beats_per_bar: S.res.beats_per_bar, chord_every: S.every, beats: S.res.beats, job: S.jobId,
   };
   try {
@@ -588,10 +581,6 @@ function renderOptions() {
       const locked = seg.start in S.locks;
       c.className = "ch" + (isNew ? " new" : "") + (locked ? " locked" : "");
       c.innerHTML = `${seg.symbol}<small>${seg.roman}</small>`;
-      c.title = locked ? "Kept. Click to release." : "Click to keep this chord";
-      c.onclick = (e) => { e.stopPropagation();
-        for (let b = seg.start; b < seg.end; b++) { if (locked) delete S.locks[b]; else S.locks[b] = seg.symbol; }
-        fetchOptions(); };
       chords.appendChild(c);
     }
     card.onclick = () => { S.sel = i; stopAll(); renderOptions(); drawRoll(); renderNotes(); if (!$("karaokePanel").classList.contains("hidden")) setupKaraoke(); };
@@ -747,7 +736,7 @@ function renderNotes() {
       const m = mel[i];
       const cells = {
         lyric: Object.assign(document.createElement("div"), { className: "cell lyr", textContent: m.lyric === HOLD ? "~" : (m.lyric || "·") }),
-        chord: Object.assign(document.createElement("div"), { className: "cell chd", textContent: chordAt(0.5 * (m.t0 + m.t1)) }),
+        chord: Object.assign(document.createElement("div"), { className: "cell chd", textContent: path.note_chords ? path.note_chords[i] : chordAt(0.5 * (m.t0 + m.t1)) }),
         you: Object.assign(document.createElement("div"), { className: "cell you", textContent: midiName(m.pitch) }),
       };
       for (const pid of ids) {
@@ -1070,22 +1059,10 @@ async function init() {
   $("resetEdits").onclick = resetEdits;
 
 
-  for (const k of Object.keys(meta.lenses)) {
-    if (k === "density") continue;
-    const b = document.createElement("button");
-    b.className = "chip"; b.textContent = LENS_LABELS[k] || k; b.title = meta.lenses[k]; b.setAttribute("aria-pressed", "false");
-    b.onclick = () => { const on = b.getAttribute("aria-pressed") !== "true"; b.setAttribute("aria-pressed", on);
-      if (on) S.palette[k] = 1; else delete S.palette[k]; stopAll(); fetchOptions(); };
-    $("lenses").appendChild(b);
-  }
   segmented("mode", (v) => { S.mode = v; stopAll(); });
-  segmented("every", (v) => { S.every = v === "bar" ? "bar" : v === "half" ? 2 * (S.res?.beats_per_bar || 4) : +v; S.locks = {}; stopAll(); fetchOptions(); });
 
   segmented("guide", (v) => { S.guide = v; stopAll(); });
   segmented("along", (v) => { S.along = v; stopAll(); });
-  $("novelty").oninput = (e) => { const v = +e.target.value;
-    $("noveltyOut").textContent = v < 0.2 ? "safe" : v < 0.5 ? "a little colour" : v < 0.8 ? "adventurous" : "wild";
-    stopAll(); refetchSoon(); };
   $("range").onchange = () => { stopAll(); fetchOptions(); };
   window.addEventListener("resize", () => { drawRoll(); if (!S.playing) drawLane(null); });
 }
