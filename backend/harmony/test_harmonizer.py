@@ -196,14 +196,35 @@ def test_classic_arrangement_spells_chords_not_octaves():
     assert doubled <= 1
 
 
-def test_runs_mirror_the_note_they_decorate():
+def test_runs_hold_the_note_they_decorate():
     from backend.harmony.harmonizer import mirror_runs
-    # held E, then a quick run D-C-D, then held E: the run takes the held notes' interval
+    # held E, a quick run D-C-D, held E: the harmony holds its note through the run
     mel = [{"pitch": 64, "t0": 0.0, "t1": 0.6}, {"pitch": 62, "t0": 0.6, "t1": 0.7},
            {"pitch": 60, "t0": 0.7, "t1": 0.8}, {"pitch": 62, "t0": 0.8, "t1": 0.9}, {"pitch": 64, "t0": 0.9, "t1": 1.6}]
-    part = [{"pitch": p} for p in (67, 65, 64, 65, 67)]            # planner's note-by-note choices
-    out = mirror_runs(mel, part)
-    assert [h["pitch"] - m["pitch"] for h, m in zip(out, mel)] == [3, 3, 3, 3, 3]
+    part = [{"pitch": p} for p in (67, 65, 64, 65, 67)]
+    assert [h["pitch"] for h in mirror_runs(mel, part)] == [67, 67, 67, 67, 67]
+
+
+def test_harmony_sings_steady_notes_not_the_leads_slides():
+    """The lead scoops into a note and wobbles; the harmony stays on its note."""
+    sr = SR
+    t = np.arange(int(1.2 * sr)) / sr
+    cents = -150 * np.exp(-t / 0.12) + 40 * np.sin(2 * np.pi * 5.5 * t)     # scoop up + wide vibrato
+    f = 220.0 * 2 ** (cents / 1200)
+    ph = 2 * np.pi * np.cumsum(f) / sr
+    x = sum((0.6 ** k) * np.sin((k + 1) * ph) for k in range(6)) * 0.3
+    times, f0 = _f0_track(x, sr)
+    mel = [{"pitch": 57, "t0": 0.0, "t1": 1.2}]
+    y = render_part(x, sr, times, f0, mel, [{"pitch": 61}])                  # target C#4
+    t_out, f_out, _, _ = yin(y, sr)
+    sel = (t_out > 0.1) & (t_out < 1.1) & ~np.isnan(f_out)
+    c = 1200 * np.log2(f_out[sel] / (440 * 2 ** ((61 - 69) / 12)))
+    assert abs(np.median(c)) < 15                                             # on the note
+    assert np.percentile(np.abs(c), 90) < 25                                  # the scoop and wobble are gone
+    follow = render_part(x, sr, times, f0, mel, [{"pitch": 61}], follow_slides=True)
+    _, f2, _, _ = yin(follow, sr)
+    c2 = 1200 * np.log2(f2[sel] / (440 * 2 ** ((61 - 69) / 12)))
+    assert np.percentile(np.abs(c2), 90) > 2 * np.percentile(np.abs(c), 90)  # (the old way copied them)
 
 
 def test_lowering_pitch_has_no_gaps_between_cycles():

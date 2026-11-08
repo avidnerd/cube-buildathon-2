@@ -431,11 +431,11 @@ RUN_JOIN_S = 0.06
 
 
 def mirror_runs(melody: Sequence[dict], part: list[dict]) -> list[dict]:
-    """Embellishments get the interval of the note they decorate.
+    """Embellishments don't get harmony notes of their own.
 
-    A singer's quick run or grace notes shouldn't each get their own harmony
-    choice: the backing voice mirrors the run at one interval (as real backing
-    singers do), which also keeps the pitch shifter from jumping mid-run.
+    Through a singer's quick run or grace notes, the backing voice simply
+    holds the note of the held melody note the run decorates: it sings the
+    plain melody's harmony, not a copy of the ornament.
     """
     n = len(melody)
     if n < 2:
@@ -456,9 +456,8 @@ def mirror_runs(melody: Sequence[dict], part: list[dict]) -> list[dict]:
                    if a is not None]
         if anchors:
             a = max(anchors, key=lambda q: dur[q])  # the held note the run belongs to
-            shift = part[a]["pitch"] - melody[a]["pitch"]
             for q in range(k, j + 1):
-                out[q]["pitch"] = int(melody[q]["pitch"] + shift)
+                out[q]["pitch"] = int(part[a]["pitch"])  # hold it through the run
         k = j + 1
     return out
 
@@ -650,7 +649,7 @@ def _hann(n: int) -> np.ndarray:
 
 
 def psola(x: np.ndarray, sr: int, f0_times: np.ndarray, f0_hz: np.ndarray,
-          shift_t: np.ndarray, shift_s: np.ndarray) -> np.ndarray:
+          shift_t: np.ndarray, shift_s: np.ndarray, target: tuple[np.ndarray, np.ndarray] | None = None) -> np.ndarray:
     """Pitch-shift x by the semitone curve (shift_t, shift_s), keeping timing.
 
     f0_hz: the lead's pitch track (nan where unvoiced). Unvoiced sound
@@ -719,8 +718,14 @@ def psola(x: np.ndarray, sr: int, f0_times: np.ndarray, f0_hz: np.ndarray,
             j -= 1
         ta, T, v = int(marks_a[j]), periods[j], voiced[j]
         if v:
-            r = 2.0 ** (float(np.interp(ts / sr, shift_t, shift_s)) / 12.0)
-            step = T / r
+            if target is not None:
+                # Pitch-correct onto the target note: the output cycle length is
+                # set by the target, whatever the singer's pitch is doing.
+                f_t = 440.0 * 2.0 ** ((float(np.interp(ts / sr, target[0], target[1])) - 69.0) / 12.0)
+                step = sr / f_t
+            else:
+                r = 2.0 ** (float(np.interp(ts / sr, shift_t, shift_s)) / 12.0)
+                step = T / r
             # Grain = two periods of whichever is longer, analysis or synthesis:
             # lowering pitch then still overlaps grains by half, so they sum
             # smoothly instead of leaving dips between cycles.
@@ -746,10 +751,37 @@ def psola(x: np.ndarray, sr: int, f0_times: np.ndarray, f0_hz: np.ndarray,
     return y
 
 
+def target_curve(melody: Sequence[dict], part: Sequence[dict], tuning_cents: float = 0.0):
+    """Absolute pitch (MIDI, fractional) the harmony voice sings over time:
+    each note held steady, a short glide (GLIDE_S) between notes, matched to
+    the singer's overall tuning so the parts don't beat against the lead."""
+    kt: list[float] = []
+    kp: list[float] = []
+    for m, h in zip(melody, part):
+        p = float(h["pitch"]) + tuning_cents / 100.0
+        t0, t1 = float(m["t0"]), float(m["t1"])
+        g = min(GLIDE_S / 2, (t1 - t0) / 4)
+        a, b = t0 + g, t1 - g
+        if kt and a <= kt[-1]:
+            a = kt[-1] + 1e-4
+            b = max(b, a)
+        kt += [a, b]
+        kp += [p, p]
+    return np.array(kt), np.array(kp)
+
+
 def render_part(vocals: np.ndarray, sr: int, f0_times: np.ndarray, f0_hz: np.ndarray,
-                melody: Sequence[dict], part: Sequence[dict]) -> np.ndarray:
-    """The lead's own voice, re-pitched to sing `part`. Silent where the lead is silent."""
+                melody: Sequence[dict], part: Sequence[dict], tuning_cents: float = 0.0,
+                follow_slides: bool = False) -> np.ndarray:
+    """The lead's own voice, singing `part`. Silent where the lead is silent.
+
+    By default the harmony sings clean, steady notes: the singer's slides,
+    scoops, runs and wobbles are corrected away (only the voice's character is
+    kept). follow_slides=True instead shifts by a fixed interval per note, so
+    the harmony copies every inflection of the lead.
+    """
     t, s = shift_curve(melody, part)
     if len(t) == 0:
         return np.zeros_like(vocals)
-    return psola(vocals, sr, f0_times, f0_hz, t, s)
+    target = None if follow_slides else target_curve(melody, part, tuning_cents)
+    return psola(vocals, sr, f0_times, f0_hz, t, s, target)

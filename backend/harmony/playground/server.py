@@ -393,7 +393,8 @@ def api_render(req: dict) -> bytes:
         if "vocals_clean" not in job:  # once per song: room hiss out before shifting
             job["vocals_clean"] = denoise(vocals, sr)
         times, hz = job["f0"]
-        y = polish(render_part(job["vocals_clean"], sr, times, hz, melody, part), sr)
+        tuning = (job.get("result") or {}).get("tuning_cents", 0.0)
+        y = polish(render_part(job["vocals_clean"], sr, times, hz, melody, part, tuning_cents=tuning), sr)
         if len(_render_cache) > 64:
             _render_cache.clear()
         _render_cache[key] = wav_bytes(y.astype(np.float32), sr)
