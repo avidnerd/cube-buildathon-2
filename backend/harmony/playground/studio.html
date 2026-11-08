@@ -127,7 +127,15 @@
   .stage { background: var(--stage); color: var(--stage-ink); border-radius: 12px; overflow: hidden; position: relative; }
   .stage canvas { width: 100%; height: 300px; display: block; }
   .lyrics { padding: 14px 18px 18px; text-align: center; min-height: 104px; }
-  .lyrics .cur { font-size: 26px; font-weight: 650; letter-spacing: -.01em; line-height: 1.35; }
+  .lyrics .cur { font-size: 26px; font-weight: 650; letter-spacing: -.01em; line-height: 1.2;
+                 display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start; row-gap: 8px; }
+  .lyrics .syl { display: inline-flex; flex-direction: column; align-items: center; padding: 0 1px; min-width: 1.4em; }
+  .lyrics .syl.gap { margin-right: .45em; }
+  .lyrics .syl .n { font: 600 13px ui-monospace, "SF Mono", Menlo, monospace; margin-top: 3px; padding: 1px 5px;
+                    border-radius: 4px; color: var(--stage-dim); }
+  .lyrics .syl.now .n { background: var(--accent); color: var(--stage); }
+  .lyrics .syl.sung .n { color: var(--stage-ink); }
+  .lyrics .syl.hold .w { opacity: .5; }
   .lyrics .next { font-size: 16px; color: var(--stage-dim); margin-top: 6px; }
   .lyrics .syl { transition: color .08s; color: var(--stage-dim); }
   .lyrics .syl.sung { color: var(--stage-ink); }
@@ -975,22 +983,28 @@ function drawLane(t) {
   g.fillStyle = css("--accent"); g.fillRect(nowX - 1, top - 8, 2, H - top + 8);
 }
 
+const noteLabel = (p) => midiName(p).replace("b", "♭").replace("#", "♯");
 function renderLyrics(t) {
   const notes = partNotes(), lines = partLines();
   let li = lines.findIndex((l) => l.end > t - 0.2);
   if (li < 0) { $("lyrics").innerHTML = ""; return; }
   const l = lines[li], nxt = lines[li + 1];
-  const words = [];
-  for (const i of l.idx) {
+  // Each sung note: its syllable on top, the note to sing underneath. Held
+  // notes (one syllable over several notes) show "~" so pitch changes are visible.
+  const cells = [];
+  l.idx.forEach((i, k) => {
     const n = notes[i];
-    if (!n.lyric || n.lyric === HOLD) continue;
     const cls = noteT1(n) <= t ? "sung" : noteT0(n) <= t ? "now" : "";
-    const text = n.lyric.replace(/-$/, "");
-    const join = n.lyric.endsWith("-") ? "" : " ";
-    words.push(`<span class="syl ${cls}">${text.replace(/</g, "&lt;")}</span>${join}`);
-  }
+    const hold = !n.lyric || n.lyric === HOLD;
+    const text = hold ? "~" : n.lyric.replace(/-$/, "");
+    const next = notes[l.idx[k + 1]];
+    const wordEnd = !hold && !n.lyric.endsWith("-") && !(next && next.lyric === HOLD);
+    const holdEnd = hold && !(next && next.lyric === HOLD);
+    cells.push(`<span class="syl ${cls}${hold ? " hold" : ""}${wordEnd || holdEnd ? " gap" : ""}">` +
+      `<span class="w">${text.replace(/</g, "&lt;")}</span><span class="n">${noteLabel(n.pitch)}</span></span>`);
+  });
   const lead = l.start - t;
-  $("lyrics").innerHTML = `<div class="cur">${words.join("") || "♪"}</div>` +
+  $("lyrics").innerHTML = `<div class="cur">${cells.join("") || "♪"}</div>` +
     (nxt ? `<div class="next">${lineText(notes, nxt.idx)}</div>` : "") +
     (lead > 0.3 ? `<div class="hint">in ${Math.ceil(lead)}…</div>` : "");
 }
