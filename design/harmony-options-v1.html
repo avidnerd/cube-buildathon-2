@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>4-Track · Harmony Options</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;700&family=Silkscreen:wght@400;700&family=VT323&display=swap" rel="stylesheet">
+<style>
+:root{
+  --body:#141517; --panel:#1E2024; --raised:#2A2D33; --edge:#3A3E46; --well:#08090A;
+  --text:#ECE9E2; --muted:#9A9CA4; --faint:#8C8F98;
+  --t1:#FF5D4F; --t2:#FFB636; --t3:#46D39A; --t4:#59A8FF;
+  --act:#FFB636; --act-edge:#C2861F; --rec:#FF3B30;
+  --px:"Silkscreen",ui-monospace,monospace; --ctr:"VT323",ui-monospace,monospace;
+  --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:#0B0C0D;color-scheme:dark}
+body{min-height:100vh;display:grid;place-items:center;font:15px/1.35 var(--ui);color:var(--text);background:#0B0C0D;-webkit-font-smoothing:antialiased}
+::selection{background:var(--act);color:var(--body)}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+button:focus-visible{outline:2px solid var(--act);outline-offset:2px}
+svg{display:block}
+.phone{position:relative;width:390px;height:844px;background:var(--body);overflow:hidden;border-radius:46px;box-shadow:0 0 0 10px #000,0 30px 80px rgba(0,0,0,.6)}
+@media (max-width:430px){body{place-items:stretch}.phone{width:100%;height:100vh;height:100dvh;border-radius:0;box-shadow:none}}
+.px{font-family:var(--px);letter-spacing:.04em}
+.status{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 26px;font-weight:600;font-size:15px}
+.status .sig{display:flex;gap:5px;align-items:center}
+.hdr{height:40px;display:flex;align-items:center;justify-content:space-between;padding:0 16px}
+.mark{display:flex;align-items:center;gap:9px;font:700 21px "Pixelify Sans",var(--px);letter-spacing:.03em}
+.stripes{display:grid;grid-template-rows:repeat(4,3px);gap:2px;width:22px}
+.stripes i:nth-child(1){background:var(--t1)}.stripes i:nth-child(2){background:var(--t2)}.stripes i:nth-child(3){background:var(--t3)}.stripes i:nth-child(4){background:var(--t4)}
+.key{display:grid;place-items:center;background:var(--raised);box-shadow:inset 0 -3px 0 #0E0F11,inset 0 1px 0 var(--edge);transition:transform .08s ease-out}
+.key:active{transform:translateY(2px);box-shadow:inset 0 -1px 0 #0E0F11}
+.icon{width:36px;height:36px}
+.top{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;padding:4px 16px 10px}
+.top h1{font-size:19px;font-weight:600;line-height:1.15}
+.top p{font-size:12px;color:var(--muted);margin-top:1px}
+.counter{background:var(--well);padding:3px 9px 1px;font:30px/1 var(--ctr);letter-spacing:.06em;box-shadow:inset 0 2px 0 #000,0 0 0 2px var(--raised);font-variant-numeric:tabular-nums;min-width:66px;text-align:center}
+.counter b{color:var(--act);font-weight:400}
+.play{width:44px;height:40px;background:var(--text);color:var(--body);box-shadow:inset 0 -4px 0 #A9A59C}
+.play[aria-pressed="true"]{background:var(--act);box-shadow:inset 0 -4px 0 var(--act-edge)}
+/* mix */
+.mix{margin:0 16px;background:var(--panel);box-shadow:inset 0 0 0 1px var(--raised);padding:8px 8px 6px 4px}
+.mixhead{display:flex;justify-content:space-between;align-items:center;padding:0 2px 6px 6px;font:11px var(--px)}
+.mixhead .hint{font:12px var(--ui);color:var(--faint);letter-spacing:0}
+.mixbody{display:grid;grid-template-columns:28px 1fr}
+.notes-keys{position:relative;height:152px;font:11px var(--px);color:var(--faint)}
+.notes-keys span{position:absolute;left:0;line-height:11px;margin-top:-4px}
+.grid{position:relative;overflow:hidden;background:
+  repeating-linear-gradient(90deg,transparent 0 calc(var(--beat) - 1px),#25282D calc(var(--beat) - 1px) var(--beat)),#1B1D21}
+.grid .bar{position:absolute;top:0;bottom:0;width:2px;background:var(--edge)}
+.grid .ph{position:absolute;top:0;bottom:0;width:2px;background:var(--text);left:0;will-change:transform}
+.n{position:absolute;box-shadow:inset 0 -2px 0 rgba(0,0,0,.3);transition:opacity .25s ease-out}
+.ruler{display:flex;font:11px var(--px);color:var(--faint);margin:4px 0 0 28px}
+.ruler span{flex:1}
+/* lanes */
+.lanes{padding:8px 16px 0;display:grid;gap:6px}
+.lane{background:var(--panel);box-shadow:inset 0 0 0 1px var(--raised);padding:7px 8px 8px}
+.lane.dim{opacity:.55}
+.lh{display:flex;align-items:center;gap:8px}
+.cap{width:22px;height:22px;display:grid;place-items:center;font:700 13px "Pixelify Sans",var(--px);color:var(--body);flex:none}
+.lh .nm{font:11px var(--px)}
+.lh .who{font-size:12px;color:var(--muted)}
+.ms{margin-left:auto;display:flex;gap:4px}
+.ms button{width:30px;height:26px;font:11px var(--px);background:var(--raised);color:var(--muted);box-shadow:inset 0 -2px 0 #0E0F11}
+.ms button[aria-pressed="true"].m{background:var(--rec);color:var(--text)}
+.ms button[aria-pressed="true"].s{background:var(--text);color:var(--body)}
+.lane .grid{height:30px;margin-top:6px}
+.cyc{display:grid;grid-template-columns:36px 1fr 36px;align-items:center;gap:6px;margin-top:6px;background:var(--body);padding:4px}
+.cyc .key{height:30px}
+.cyc .mid{text-align:center;min-width:0}
+.cyc .mid b{display:block;font:11px var(--px);color:var(--act);font-weight:400}
+.cyc .mid span{font-size:12px;color:var(--muted)}
+.lvl{display:inline-flex;gap:2px;vertical-align:-1px;margin-left:4px}
+.lvl i{width:5px;height:9px;background:var(--edge)}.lvl i.f{background:var(--t3)}
+.empty{display:flex;align-items:center;gap:8px;height:44px;padding:0 8px;border:2px dashed var(--edge);color:var(--muted);font:11px var(--px);width:100%;text-align:left}
+.empty .plus{margin-left:auto;width:24px;height:24px}
+.empty:hover{border-color:var(--faint);color:var(--text)}
+.cta{position:absolute;left:16px;right:16px;bottom:94px;height:48px;background:var(--act);color:var(--body);font:700 14px var(--px);letter-spacing:.04em;box-shadow:inset 0 -4px 0 var(--act-edge);transition:transform .08s ease-out}
+.cta:active{transform:translateY(2px)}
+.tabbar{position:absolute;left:0;right:0;bottom:0;height:83px;background:var(--body);border-top:2px solid var(--raised);display:flex;justify-content:space-around;padding-top:8px}
+.tabbar button{width:76px;display:grid;justify-items:center;gap:4px;font:11px var(--px);color:var(--faint)}
+.tabbar svg{width:22px;height:22px}
+.tabbar [aria-current]{color:var(--text)}
+.tabbar [aria-current] svg{color:var(--act)}
+.toast{position:absolute;left:50%;bottom:152px;transform:translate(-50%,8px);opacity:0;background:var(--text);color:var(--body);font:11px var(--px);padding:8px 12px;transition:opacity .2s ease-out,transform .2s ease-out;pointer-events:none;white-space:nowrap}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<main class="phone" aria-label="4-Track Harmony Options mockup">
+  <div class="status" aria-hidden="true"><span>9:41</span><span class="sig">
+    <svg width="18" height="11" viewBox="0 0 18 11" fill="currentColor"><rect x="0" y="7" width="3" height="4"/><rect x="5" y="5" width="3" height="6"/><rect x="10" y="2" width="3" height="9"/><rect x="15" y="0" width="3" height="11"/></svg>
+    <svg width="25" height="12" viewBox="0 0 25 12" fill="none" stroke="currentColor"><rect x="0.5" y="0.5" width="21" height="11" rx="2"/><rect x="2.5" y="2.5" width="15" height="7" fill="currentColor" stroke="none"/><rect x="23" y="4" width="2" height="4" fill="currentColor" stroke="none"/></svg></span></div>
+
+  <div class="hdr">
+    <span class="mark"><span class="stripes" aria-hidden="true"><i></i><i></i><i></i><i></i></span>4-TRACK</span>
+    <button class="key icon" aria-label="Share project">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" shape-rendering="crispEdges"><rect x="7" y="1" width="2" height="9"/><rect x="5" y="3" width="2" height="2"/><rect x="9" y="3" width="2" height="2"/><rect x="3" y="7" width="2" height="7"/><rect x="11" y="7" width="2" height="7"/><rect x="3" y="12" width="10" height="2"/></svg>
+    </button>
+  </div>
+
+  <div class="top">
+    <div><h1>Down to the River</h1><p>G major · 92 bpm · 4/4 · sample project</p></div>
+    <div class="counter" id="counter" aria-live="off" aria-label="Position">01<b>.</b>1</div>
+    <button class="play key" id="play" aria-label="Play all tracks" aria-pressed="false">
+      <svg id="playIcon" width="14" height="14" viewBox="0 0 14 14" fill="currentColor" shape-rendering="crispEdges"><rect x="2" y="1" width="2" height="12"/><rect x="4" y="3" width="2" height="8"/><rect x="6" y="4" width="2" height="6"/><rect x="8" y="5" width="2" height="4"/><rect x="10" y="6" width="2" height="2"/></svg>
+    </button>
+  </div>
+
+  <section class="mix" aria-label="Mix of all tracks">
+    <div class="mixhead"><span>MIX · ALL TRACKS</span><span class="hint">Drag a note to lock it</span></div>
+    <div class="mixbody">
+      <div class="notes-keys" id="mixKeys" aria-hidden="true"></div>
+      <div class="grid" id="mixGrid" style="height:152px"></div>
+    </div>
+    <div class="ruler"><span>BAR 1</span><span>BAR 2</span></div>
+  </section>
+
+  <section class="lanes" id="lanes" aria-label="Tracks"></section>
+
+  <button class="cta" id="keep">KEEP FOR MAYA</button>
+  <div class="toast" id="toast" role="status"></div>
+
+  <nav class="tabbar" aria-label="Main">
+    <button><svg viewBox="0 0 22 22" fill="currentColor" shape-rendering="crispEdges"><rect x="7" y="2" width="8" height="12"/><rect x="4" y="10" width="2" height="4"/><rect x="16" y="10" width="2" height="4"/><rect x="5" y="14" width="12" height="2"/><rect x="10" y="16" width="2" height="3"/><rect x="7" y="19" width="8" height="2"/></svg>RECORD</button>
+    <button aria-current="page"><svg viewBox="0 0 22 22" fill="currentColor" shape-rendering="crispEdges"><rect x="2" y="4" width="18" height="3"/><rect x="2" y="9" width="12" height="3"/><rect x="2" y="14" width="15" height="3"/><rect x="16" y="9" width="4" height="3" opacity=".5"/></svg>ARRANGE</button>
+    <button><svg viewBox="0 0 22 22" fill="currentColor" shape-rendering="crispEdges"><rect x="3" y="3" width="2" height="16"/><rect x="10" y="3" width="2" height="16"/><rect x="17" y="3" width="2" height="16"/><rect x="1" y="12" width="6" height="3"/><rect x="8" y="6" width="6" height="3"/><rect x="15" y="10" width="6" height="3"/></svg>PARTS</button>
+    <button><svg viewBox="0 0 22 22" fill="currentColor" shape-rendering="crispEdges"><rect x="2" y="13" width="3" height="3"/><rect x="5" y="10" width="3" height="3"/><rect x="8" y="12" width="3" height="3"/><rect x="11" y="7" width="3" height="3"/><rect x="14" y="9" width="3" height="3"/><rect x="17" y="5" width="3" height="3"/></svg>PRACTICE</button>
+  </nav>
+</main>
+
+<script>
+/* Sample data in the shape of docs/SPEC.md's note model (MIDI pitch, beats). */
+const R = [0,1,2,2.5,3,4,5,6,7], D = [1,1,.5,.5,1,1,1,1,1];
+const line = p => p.map((pitch,i) => ({pitch, start:R[i], duration:D[i]}));
+const project = {
+  key:"G major", tempo:92, timeSignature:"4/4",
+  tracks:[
+    {id:"t1", name:"MELODY", who:"Priya · recorded", color:"var(--t1)", notes:line([62,67,67,69,71,69,67,64,62])},
+    {id:"t2", name:"ALTO", who:"Maya", color:"var(--t2)", options:[
+      {label:"PARALLEL 3RDS", desc:"Warm, classic pop", level:1, fits:"fits Maya", notes:line([59,64,64,66,67,66,64,60,59])},
+      {label:"CHORD-TONE", desc:"Follows the chords", level:3, fits:"fits Maya", notes:line([59,62,62,62,62,62,59,60,59])},
+      {label:"CONTRARY", desc:"Moves against the tune", level:2, fits:"fits Maya", notes:line([59,57,57,55,55,57,59,60,59])},
+      {label:"PEDAL / DRONE", desc:"One held note", level:1, fits:"fits Maya, Sam", notes:[{pitch:59,start:0,duration:4},{pitch:59,start:4,duration:4}]}
+    ], pick:0},
+    {id:"t3", name:"TENOR", who:"Jordan · 6ths", color:"var(--t3)", notes:line([54,59,59,60,62,60,59,55,54])},
+    {id:"t4", name:"BASS", who:"Sam", color:"var(--t4)", notes:null}
+  ]
+};
+const HI = 72, LO = 52, BEATS = 8;
+const state = {mute:{}, solo:null, playing:false, t0:0, raf:0};
+
+const notesOf = t => t.options ? t.options[t.pick].notes : t.notes;
+function audible(id){ if(state.solo) return state.solo === id; return !state.mute[id]; }
+
+function draw(grid, track, h, rowH, noteH){
+  const w = grid.clientWidth, beat = w / BEATS;
+  grid.style.setProperty('--beat', beat + 'px');
+  grid.querySelectorAll('.n').forEach(n => n.remove());
+  (notesOf(track) || []).forEach(n => {
+    const el = document.createElement('div');
+    el.className = 'n';
+    el.style.cssText = `left:${n.start*beat+1}px;width:${n.duration*beat-3}px;top:${(HI-n.pitch)*rowH+(rowH-noteH)/2}px;height:${noteH}px;background:${track.color}`;
+    el.dataset.track = track.id;
+    grid.appendChild(el);
+  });
+}
+
+function scaffold(grid){
+  grid.innerHTML = '<div class="bar" style="left:calc(50% - 1px)"></div><div class="ph"></div>';
+}
+
+function renderMix(){
+  const g = document.getElementById('mixGrid');
+  if(!g.querySelector('.ph')) scaffold(g);
+  g.querySelectorAll('.n').forEach(n => n.remove());
+  const rowH = 152 / (HI-LO+1);
+  project.tracks.forEach(t => {
+    if(!notesOf(t)) return;
+    const tmp = document.createElement('div'); tmp.style.cssText = 'position:absolute;inset:0';
+    const beat = g.clientWidth / BEATS; g.style.setProperty('--beat', beat+'px');
+    notesOf(t).forEach(n => {
+      const el = document.createElement('div');
+      el.className = 'n';
+      el.style.cssText = `left:${n.start*beat+1}px;width:${n.duration*beat-3}px;top:${(HI-n.pitch)*rowH+.5}px;height:${rowH-1.5}px;background:${t.color};opacity:${audible(t.id)?1:.12}`;
+      g.appendChild(el);
+    });
+  });
+  const keys = document.getElementById('mixKeys');
+  keys.innerHTML = [[72,'C5'],[67,'G4'],[62,'D4'],[57,'A3'],[52,'E3']].map(([p,l]) => `<span style="top:${(HI-p)*rowH}px">${l}</span>`).join('');
+}
+
+function laneHTML(t, i){
+  if(!notesOf(t)) return `<button class="empty" data-add="${t.id}"><span class="cap" style="background:${t.color}">${i+1}</span>ADD ${t.name} · ${t.who}<svg class="plus" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges"><rect x="11" y="5" width="2" height="14"/><rect x="5" y="11" width="14" height="2"/></svg></button>`;
+  const cyc = t.options ? (() => { const o = t.options[t.pick];
+    return `<div class="cyc"><button class="key" data-cyc="-1" aria-label="Previous option"><svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor" shape-rendering="crispEdges"><rect x="6" y="0" width="2" height="12"/><rect x="4" y="2" width="2" height="8"/><rect x="2" y="4" width="2" height="4"/></svg></button>
+      <div class="mid" aria-live="polite"><b>${String(t.pick+1).padStart(2,'0')}/${String(t.options.length).padStart(2,'0')} ${o.label}</b><span>${o.desc} · ${o.fits}</span><span class="lvl" aria-label="Difficulty ${o.level} of 3">${[1,2,3].map(k=>`<i class="${k<=o.level?'f':''}"></i>`).join('')}</span></div>
+      <button class="key" data-cyc="1" aria-label="Next option"><svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor" shape-rendering="crispEdges"><rect x="2" y="0" width="2" height="12"/><rect x="4" y="2" width="2" height="8"/><rect x="6" y="4" width="2" height="4"/></svg></button></div>`; })() : '';
+  return `<div class="lane ${audible(t.id)?'':'dim'}" data-id="${t.id}">
+    <div class="lh"><span class="cap" style="background:${t.color}">${i+1}</span><span class="nm">${t.name}</span><span class="who">${t.who}</span>
+      <span class="ms"><button class="m" data-mute="${t.id}" aria-pressed="${!!state.mute[t.id]}" aria-label="Mute ${t.name}">M</button><button class="s" data-solo="${t.id}" aria-pressed="${state.solo===t.id}" aria-label="Solo ${t.name}">S</button></span></div>
+    <div class="grid" data-grid="${t.id}"></div>${cyc}</div>`;
+}
+
+function renderLanes(){
+  const box = document.getElementById('lanes');
+  box.innerHTML = project.tracks.map(laneHTML).join('');
+  box.querySelectorAll('[data-grid]').forEach(g => {
+    scaffold(g);
+    const t = project.tracks.find(x => x.id === g.dataset.grid);
+    draw(g, t, 30, 30/(HI-LO+1), 5);
+  });
+}
+
+function render(){ renderMix(); renderLanes(); }
+
+document.addEventListener('click', e => {
+  const b = e.target.closest('button'); if(!b) return;
+  if(b.dataset.mute){ const id=b.dataset.mute; state.mute[id]=!state.mute[id]; if(state.solo===id) state.solo=null; render(); }
+  else if(b.dataset.solo){ const id=b.dataset.solo; state.solo = state.solo===id ? null : id; render(); }
+  else if(b.dataset.cyc){ const t=project.tracks[1]; t.pick=(t.pick+Number(b.dataset.cyc)+t.options.length)%t.options.length; render(); }
+  else if(b.dataset.add){ toast('NEXT: HARMONY OPTIONS FOR ' + project.tracks.find(t=>t.id===b.dataset.add).name); }
+  else if(b.id==='keep'){ toast(project.tracks[1].options[project.tracks[1].pick].label + ' ON TRACK 2'); }
+  else if(b.id==='play'){ state.playing ? stop() : start(); }
+});
+
+let toastTimer;
+function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('on'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('on'),1800); }
+
+const secPerBeat = 60 / project.tempo;
+function start(){ state.playing=true; state.t0=performance.now(); document.getElementById('play').setAttribute('aria-pressed','true'); tick(); }
+function stop(){ state.playing=false; cancelAnimationFrame(state.raf); document.getElementById('play').setAttribute('aria-pressed','false'); setPos(0); }
+function setPos(beat){
+  document.querySelectorAll('.grid').forEach(g => { const ph=g.querySelector('.ph'); if(ph) ph.style.transform=`translateX(${beat/BEATS*g.clientWidth}px)`; });
+  const bar = Math.floor(beat/4)+1, b = Math.floor(beat%4)+1;
+  document.getElementById('counter').innerHTML = `${String(bar).padStart(2,'0')}<b>.</b>${b}`;
+}
+function tick(){
+  const beat = (performance.now()-state.t0)/1000/secPerBeat;
+  if(beat >= BEATS){ stop(); return; }
+  setPos(beat); state.raf = requestAnimationFrame(tick);
+}
+
+render(); setPos(0);
+addEventListener('resize', render);
+</script>
+</body>
+</html>
