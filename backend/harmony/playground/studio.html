@@ -106,6 +106,23 @@
   .expl .when { font: 11.5px ui-monospace, monospace; color: var(--muted); margin-right: 6px; }
   .expl .tag { display: block; color: var(--muted); font-size: 12.5px; }
 
+  /* notes editor */
+  .nline { border-top: 1px solid var(--line); padding: 10px 0; }
+  .nline:first-child { border-top: 0; }
+  .nline .head { display: flex; gap: 10px; align-items: center; margin-bottom: 6px; }
+  .nline .head b { font-size: 13.5px; }
+  .ngrid { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(54px, max-content); grid-template-rows: repeat(5, auto); gap: 2px 4px; overflow-x: auto; padding-bottom: 4px; }
+  .ngrid .lab { font-size: 11px; color: var(--muted); align-self: center; padding-right: 6px; }
+  .ngrid .cell { font: 12.5px ui-monospace, "SF Mono", Menlo, monospace; text-align: center; padding: 2px 3px; border-radius: 4px; white-space: nowrap; }
+  .ngrid .lyr { font-family: inherit; font-weight: 600; }
+  .ngrid .chd { color: var(--muted); font-size: 11px; }
+  .ngrid .you { background: var(--bg); font-weight: 650; }
+  .ngrid select { font: 12.5px ui-monospace, "SF Mono", Menlo, monospace; padding: 1px 2px; width: 100%; }
+  .ngrid select.hi { color: var(--upper); }
+  .ngrid select.lo { color: var(--lower); }
+  .ngrid select.edited { outline: 2px solid var(--lock); background: var(--sel); }
+  .ngrid .same { opacity: .55; }
+
   /* karaoke */
   .stage { background: var(--stage); color: var(--stage-ink); border-radius: 12px; overflow: hidden; position: relative; }
   .stage canvas { width: 100%; height: 300px; display: block; }
@@ -226,6 +243,21 @@
       <summary class="muted" style="cursor:pointer">Why these chords?</summary>
       <ul class="expl" id="expl" style="margin-top:8px"></ul>
     </details>
+  </section>
+
+  <!-- Notes editor -->
+  <section class="panel hidden" id="notesPanel">
+    <div class="row between" style="margin-bottom:6px">
+      <h2 style="margin:0">Notes · see and fix the harmony</h2>
+      <div class="row">
+        <span class="muted" id="editCount"></span>
+        <button id="resetEdits">Reset</button>
+        <button class="primary" id="sendEdits">Send my fixes to Claude</button>
+      </div>
+    </div>
+    <p class="muted" style="margin:0 0 10px">Showing <b id="notesWhich"></b>. Change any harmony note, press ▶ to hear that line with your change.
+      Your fixes are what the algorithm learns from.</p>
+    <div id="notesBody"></div>
   </section>
 
   <!-- 5. Karaoke -->
@@ -537,7 +569,8 @@ async function fetchOptions() {
     if (!r.ok) throw new Error(j.error);
     S.opts = j; S.sel = Math.min(S.sel, j.paths.length - 1); S.renders.clear();
     if (!$("arrs").children.length) buildArrangements();
-    show("optsPanel"); renderOptions(); drawRoll(); renderKaraokeIdle();
+    S.original.clear();
+    show("optsPanel"); renderOptions(); drawRoll(); renderNotes(); renderKaraokeIdle();
   } catch (e) { showError(e.message); }
 }
 let debounce;
@@ -569,7 +602,7 @@ function renderOptions() {
         fetchOptions(); };
       chords.appendChild(c);
     }
-    card.onclick = () => { S.sel = i; stopAll(); renderOptions(); drawRoll(); if (!$("karaokePanel").classList.contains("hidden")) setupKaraoke(); };
+    card.onclick = () => { S.sel = i; stopAll(); renderOptions(); drawRoll(); renderNotes(); if (!$("karaokePanel").classList.contains("hidden")) setupKaraoke(); };
     card.querySelector("[data-play]").onclick = (e) => { e.stopPropagation(); S.sel = i; renderOptions(); drawRoll(); preview(); };
     box.appendChild(card);
   });
@@ -630,6 +663,7 @@ function stopAll() {
   }
   stopMic();
   $("sing").textContent = "▶ Start"; $("preview").textContent = "▶ Hear it";
+  document.querySelectorAll("[data-line-play]").forEach((b) => { b.textContent = "▶"; });
   drawRoll();
 }
 // Start a set of take-aligned buffers so that audio time `from` plays at ctx time T.
@@ -653,16 +687,21 @@ function playBuffers(list, button, label) {
   const tick = () => { if (!S.playing) return; const t = ctx.currentTime - T; S.playing.rollT = t; drawRoll(); if (t > dur) return stopAll(); S.playing.raf = requestAnimationFrame(tick); };
   S.playing.raf = requestAnimationFrame(tick);
 }
-async function preview() {
-  if (S.playing?.kind === "preview") return stopAll();
+async function preview(range, button) {
+  button = button || $("preview");
+  const label = button.textContent.startsWith("■") ? button.dataset.label : button.textContent;
+  if (S.playing?.kind === "preview" && S.playing.button === button) return stopAll();
   stopAll();
+  button.dataset.label = label;
   const ctx = audio(), path = S.opts.paths[S.sel], parts = curParts();
-  const mel = S.res.notes, from = Math.max(0, noteT0(mel[0]) - 0.5), end = noteT1(mel[mel.length - 1]) + 0.5;
+  const mel = S.res.notes;
+  const from = range ? range[0] : Math.max(0, noteT0(mel[0]) - 0.5);
+  const end = range ? range[1] : noteT1(mel[mel.length - 1]) + 0.5;
   let voices = [];
   if (S.mode === "voice") {
-    $("preview").textContent = "rendering…";
+    button.textContent = "…";
     try { voices = await Promise.all(partIds().map(renderBuf)); }
-    catch (e) { showError(e.message); $("preview").textContent = "▶ Hear it"; return; }
+    catch (e) { showError(e.message); button.textContent = label; return; }
   }
   const T = ctx.currentTime + 0.3, bus = ctx.createGain(); bus.gain.value = 0.9; bus.connect(ctx.destination);
   const at = (t) => T + (t - from);
@@ -675,10 +714,82 @@ async function preview() {
   else for (const pid of partIds()) nodes.push(...phraseTones(bus, parts[pid], at, from, "triangle", 0.11));
   if (!S.res.has_music) for (const seg of path.timeline) if (b2t(seg.start) >= from)
     for (const p of seg.voicing) nodes.push(tone(bus, p, at(b2t(seg.start)), b2t(seg.end) - b2t(seg.start), "sine", 0.04));
-  S.playing = { nodes, kind: "preview" };
-  $("preview").textContent = "■ Stop";
+  S.playing = { nodes, kind: "preview", button, label };
+  button.textContent = "■";
+  if (button === $("preview")) button.textContent = "■ Stop";
   const tick = () => { if (!S.playing) return; const t = from + ctx.currentTime - T; S.playing.rollT = t; drawRoll(); if (t > end) return stopAll(); S.playing.raf = requestAnimationFrame(tick); };
   S.playing.raf = requestAnimationFrame(tick);
+}
+
+// ------------------------------------------------------------------ notes editor
+// The algorithm's suggestion is only a starting point: every harmony note is editable.
+S.original = new Map();   // "sel|arr|pid|i" -> algorithm's pitch (to show and send what changed)
+function editKey(pid, i) { return `${S.sel}|${S.arr}|${pid}|${i}`; }
+function renderNotes() {
+  if (!S.opts) return;
+  show("notesPanel");
+  const parts = curParts(), ids = partIds(), mel = S.res.notes, path = S.opts.paths[S.sel];
+  const labels = Object.fromEntries(S.opts.arrangements[S.arr].parts.map((p) => [p.id, p.label]));
+  $("notesWhich").textContent = `${path.name} · ${S.opts.arrangements[S.arr].label}`;
+  const chordAt = (t) => { const bt = S.res.beats; let b = 0; while (b + 1 < bt.length && bt[b + 1] <= t) b++; return path.chords[Math.min(b, path.chords.length - 1)]; };
+  const body = $("notesBody"); body.innerHTML = "";
+  S.res.lines.forEach((line, li) => {
+    const box = document.createElement("div"); box.className = "nline";
+    const t0 = mel[line.notes[0]].t0, t1 = mel[line.notes[line.notes.length - 1]].t1;
+    box.innerHTML = `<div class="head"><button class="chip" data-line-play>▶</button><b>${lineText(mel, line.notes) || "♪"}</b><span class="muted">${t0.toFixed(1)}s</span></div>`;
+    box.querySelector("[data-line-play]").onclick = (e) => preview([Math.max(0, t0 - 0.3), t1 + 0.4], e.currentTarget);
+    const grid = document.createElement("div"); grid.className = "ngrid";
+    const rows = [["lyric", "Lyric"], ["chord", "Chord"], [ids[0], labels[ids[0]]], ["you", "You"], [ids[1], labels[ids[1]]]];
+    rows.forEach(([, lab]) => { const d = document.createElement("div"); d.className = "lab"; d.textContent = lab; grid.appendChild(d); });
+    for (const i of line.notes) {
+      const m = mel[i];
+      const cells = {
+        lyric: Object.assign(document.createElement("div"), { className: "cell lyr", textContent: m.lyric === HOLD ? "~" : (m.lyric || "·") }),
+        chord: Object.assign(document.createElement("div"), { className: "cell chd", textContent: chordAt(0.5 * (m.t0 + m.t1)) }),
+        you: Object.assign(document.createElement("div"), { className: "cell you", textContent: midiName(m.pitch) }),
+      };
+      for (const pid of ids) {
+        const h = parts[pid][i], key = editKey(pid, i);
+        if (!S.original.has(key)) S.original.set(key, h.pitch);
+        const orig = S.original.get(key), sel = document.createElement("select");
+        sel.className = (pid === ids[0] ? "hi" : "lo") + (h.pitch !== orig ? " edited" : "");
+        for (let p = orig - 7; p <= orig + 7; p++) sel.add(new Option(midiName(p) + (p === orig ? " ·" : ""), p, false, p === h.pitch));
+        const prev = i > 0 ? parts[pid][i - 1].pitch : null;
+        if (prev === h.pitch && line.notes[0] !== i) sel.classList.add("same");
+        sel.title = `Algorithm chose ${midiName(orig)}. Interval to you: ${h.pitch - m.pitch} semitones`;
+        sel.onchange = () => {
+          h.pitch = +sel.value; stopAll();
+          for (const k of [...S.renders.keys()]) if (k.startsWith(`${S.sel}|${S.arr}|${pid}`)) S.renders.delete(k);
+          renderNotes(); drawRoll();
+        };
+        cells[pid] = sel;
+      }
+      for (const [k] of rows) grid.appendChild(cells[k]);
+    }
+    box.appendChild(grid); body.appendChild(box);
+  });
+  const n = [...S.original.entries()].filter(([k, v]) => k.startsWith(`${S.sel}|${S.arr}|`) && curParts()[k.split("|")[2]][+k.split("|")[3]].pitch !== v).length;
+  $("editCount").textContent = n ? `${n} note${n > 1 ? "s" : ""} changed` : "";
+}
+function resetEdits() {
+  for (const [k, v] of S.original) {
+    const [sel, arr, pid, i] = k.split("|");
+    if (+sel === S.sel && arr === S.arr) S.opts.paths[sel].parts[arr][pid][+i].pitch = v;
+  }
+  S.renders.clear(); stopAll(); renderNotes(); drawRoll();
+}
+async function sendEdits() {
+  const path = S.opts.paths[S.sel], parts = curParts();
+  const changes = [];
+  for (const pid of partIds()) parts[pid].forEach((h, i) => {
+    const orig = S.original.get(editKey(pid, i)) ?? h.pitch;
+    if (orig !== h.pitch) changes.push({ part: pid, index: i, t0: h.t0, lyric: S.res.notes[i].lyric, lead: S.res.notes[i].pitch, algorithm: orig, yours: h.pitch });
+  });
+  const body = { option: path.name, arrangement: S.arr, key: path.key, chords: path.chords, beats: S.res.beats,
+                 notes: S.res.notes, parts, changes };
+  const r = await fetch("/api/feedback", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const j = await r.json();
+  $("editCount").textContent = r.ok ? `sent ${changes.length} fix${changes.length === 1 ? "" : "es"} ✓  (tell Claude in chat)` : j.error;
 }
 
 // ------------------------------------------------------------------ karaoke
@@ -905,7 +1016,7 @@ function buildArrangements() {
     b.onclick = () => {
       S.arr = k; stopAll();
       box.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", x === b));
-      buildPartPicker(); drawRoll(); renderKaraokeIdle();
+      buildPartPicker(); drawRoll(); renderNotes(); renderKaraokeIdle();
     };
     box.appendChild(b);
   }
@@ -938,9 +1049,11 @@ async function init() {
   drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("over"); if (e.dataTransfer.files[0]) uploadFile(e.dataTransfer.files[0]); };
   $("rec").onclick = () => (rec ? stopRecording() : startRecording());
   $("bpm").oninput = (e) => { $("bpmOut").textContent = e.target.value; };
-  $("preview").onclick = preview;
+  $("preview").onclick = () => preview();
   $("sing").onclick = () => sing();
   $("lyricsApply").onclick = applyLyrics;
+  $("resetEdits").onclick = resetEdits;
+  $("sendEdits").onclick = sendEdits;
 
   for (const k of Object.keys(meta.lenses)) {
     if (k === "density") continue;

@@ -378,6 +378,21 @@ def api_render(req: dict) -> bytes:
     return _render_cache[key]
 
 
+FEEDBACK_DIR = HERE.parents[2] / "listen"
+
+
+def api_feedback(req: dict) -> dict:
+    """Save the user's hand-corrected harmony so the algorithm can be tuned to it."""
+    import time
+
+    FEEDBACK_DIR.mkdir(exist_ok=True)
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    data = json.dumps(req, indent=1)
+    (FEEDBACK_DIR / f"feedback-{stamp}.json").write_text(data)
+    (FEEDBACK_DIR / "feedback-latest.json").write_text(data)
+    return {"saved": f"listen/feedback-{stamp}.json", "changes": len(req.get("changes", []))}
+
+
 def api_lyrics(req: dict) -> dict:
     notes = lyrics_from_text(req["notes"], req.get("text", ""))
     return {"notes": notes, "lines": lines_from_notes(notes)}
@@ -450,6 +465,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(200, api_options(json.loads(body or b"{}")))
             elif url.path == "/api/render":
                 self._send(200, api_render(json.loads(body or b"{}")), "audio/wav")
+            elif url.path == "/api/feedback":
+                self._json(200, api_feedback(json.loads(body or b"{}")))
             elif url.path == "/api/lyrics":
                 self._json(200, api_lyrics(json.loads(body or b"{}")))
             elif url.path == "/api/reharmonize":
