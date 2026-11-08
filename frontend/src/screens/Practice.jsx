@@ -11,6 +11,7 @@ import { roleLabel } from './Parts.jsx';
 export function PracticeScreen({ project, playback, mix, setMix, go, totalBeats }) {
   const [speed, setSpeed] = useState(1);
   const [loop, setLoop] = useState(true);
+  const [tones, setTones] = useState(false);
   const tracks = project.tracks;
   const index = tracks.findIndex(t => t.id === mix.singing);
   const mine = tracks[index];
@@ -24,7 +25,7 @@ export function PracticeScreen({ project, playback, mix, setMix, go, totalBeats 
     <button className="cta" onClick={() => go('record')}><i className="dot"/>GO TO RECORD</button>
   </>;
 
-  const start = () => playback.play({ ...playbackOptions(project, tracks, gains, mix, { rate: speed }), totalBeats, rate: speed, loop });
+  const start = () => playback.play({ ...playbackOptions(project, tracks, gains, mix, { rate: speed, tones }), totalBeats, rate: speed, loop });
   return <>
     <Header/>
     <div className="scroll">
@@ -45,6 +46,11 @@ export function PracticeScreen({ project, playback, mix, setMix, go, totalBeats 
         <button className="chip" aria-pressed={loop} onClick={() => { setLoop(l => !l); playback.stop(); }}>Loop</button>
         <div className="seg" role="group" aria-label="Speed">
           {[0.5, 0.75, 1].map(s => <button key={s} aria-pressed={speed === s} onClick={() => { setSpeed(s); playback.stop(); }}>{s * 100}%</button>)}
+        </div>
+      </div>
+      <div className="loop">
+        <div className="seg" role="group" aria-label="Sound">
+          {[[false, 'Voice'], [true, 'Tone']].map(([value, label]) => <button key={label} aria-pressed={tones === value} onClick={() => { setTones(value); playback.stop(); }}>{label}</button>)}
         </div>
       </div>
       <div className="note-soon"><b>Pitch feedback is coming</b>Live scoring of your pitch (on pitch / close / off, with habits after each take) is build step 5. For now, sing along with your part at any speed, using headphones.</div>

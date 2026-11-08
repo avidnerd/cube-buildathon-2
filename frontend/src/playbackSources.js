@@ -40,7 +40,8 @@ function sharedOptions(project, tracks, gains, mix, rate) {
 }
 
 /** Options for player.play(): adds voice audio and the band to tracks and gains. */
-export function playbackOptions(project, tracks, gains, mix, { rate = 1 } = {}) {
+export function playbackOptions(project, tracks, gains, mix, { rate = 1, tones = false } = {}) {
+  if (tones) return { tracks: tracks.map(t => ({ ...t, audio: null })), tempo: project.tempo, gains: { ...gains } };
   if (project.shared) return sharedOptions(project, tracks, gains, mix, rate);
   const melody = project.tracks.find(t => t.role === 'melody');
   const timing = liveTiming(project, melody, rate);

@@ -94,6 +94,14 @@ test('real voices play at the sung tempo, in sync with the recording', () => {
   assert.equal(out.gains.band, 0.7);
 });
 
+test('tone mode plays every part on the synth, with no band', () => {
+  const project = projectWith(m => [harmonyTrack(harmonyBasis(m))]);
+  const out = playbackOptions(project, project.tracks, { melody: 1 }, quiet, { tones: true });
+  assert.deepEqual(out.tracks.map(t => t.audio), [null, null]);
+  assert.equal(out.tempo, 100);
+  assert.equal(out.gains.band, undefined);
+});
+
 test('slowed down, retimed, or out-of-date parts fall back to the synth', () => {
   const project = projectWith(m => [harmonyTrack(harmonyBasis(m))]);
   assert.equal(playbackOptions(project, project.tracks, {}, quiet, { rate: 0.5 }).tracks[0].audio, null);
