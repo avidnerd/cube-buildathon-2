@@ -1,0 +1,443 @@
+<!doctype html>
+<!-- PLACEHOLDER UI — FOR TESTING ONLY. Not the real app's interface.
+     Served by placeholder_ui/server.py. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Counter-melody</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1f; --muted: #6b6b70; --line: #e2e0da;
+    --accent: #2f5bd3; --accent-ink: #fff; --mel: #2f5bd3; --cnt: #e07a1f; --bad: #c0392b;
+    --white-key: #ffffff; --black-key: #222; --key-hit: #cfdafc;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #17171a; --panel: #212125; --ink: #ececf0; --muted: #9a9aa3; --line: #34343a;
+      --accent: #6e8ff0; --accent-ink: #0d0d10; --mel: #7b9cff; --cnt: #f39a4a; --bad: #ff7b6b;
+      --white-key: #e9e9ec; --black-key: #0b0b0d; --key-hit: #9db4ff;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  .panel h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 12px; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  label { font-size: 13px; color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
+  select, input[type=number] { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px;
+                               background: var(--panel); color: var(--ink); min-width: 110px; }
+  button { font: inherit; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--line);
+           background: var(--panel); color: var(--ink); cursor: pointer; }
+  button:hover { border-color: var(--muted); }
+  button.on { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: .45; cursor: default; }
+  .sep { width: 1px; align-self: stretch; background: var(--line); margin: 0 4px; }
+
+  /* piano */
+  .piano-wrap { overflow-x: auto; padding-bottom: 4px; }
+  .piano { position: relative; height: 150px; user-select: none; margin: 12px 0 4px; }
+  .key { position: absolute; top: 0; border: 1px solid #888; border-radius: 0 0 6px 6px; cursor: pointer;
+         display: flex; align-items: flex-end; justify-content: center; font-size: 11px; padding-bottom: 6px; }
+  .key.white { background: var(--white-key); height: 150px; color: #777; z-index: 1; }
+  .key.black { background: var(--black-key); height: 92px; z-index: 2; color: #aaa; border-color: #000; }
+  .key.hit { background: var(--key-hit) !important; }
+  .key.kb { box-shadow: inset 0 -4px 0 var(--accent); }
+  .key.black.kb { box-shadow: inset 0 -4px 0 var(--accent); }
+  .piano-wrap { scrollbar-width: thin; }
+  .hint { font-size: 12px; color: var(--muted); }
+
+  /* melody chips */
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; min-height: 36px; align-items: center; }
+  .chip { padding: 4px 8px; border-radius: 6px; background: color-mix(in srgb, var(--mel) 14%, transparent);
+          border: 1px solid color-mix(in srgb, var(--mel) 35%, transparent); font-size: 13px; cursor: pointer; }
+  .chip.rest { background: transparent; border-style: dashed; color: var(--muted); border-color: var(--line); }
+  .chip:hover { text-decoration: line-through; }
+  .bar { width: 2px; height: 26px; background: var(--muted); opacity: .5; border-radius: 1px; }
+  .empty { color: var(--muted); font-size: 14px; }
+  textarea { width: 100%; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 10px;
+             border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); resize: vertical; }
+  details summary { cursor: pointer; color: var(--muted); font-size: 13px; margin-top: 12px; }
+
+  /* results */
+  .badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .badge { font-size: 12px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+  .badge b { color: var(--ink); font-weight: 600; }
+  .roll-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+  .legend { display: flex; gap: 14px; font-size: 13px; color: var(--muted); margin: 10px 0; }
+  .sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 5px; }
+  pre.out { white-space: pre-wrap; word-break: break-word; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+            background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin: 6px 0 10px; }
+  .error { color: var(--bad); margin-top: 10px; }
+  .warn { color: var(--muted); font-size: 12px; margin-top: 8px; }
+  .hidden { display: none; }
+  .placeholder { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase;
+                 color: var(--cnt); border: 1px dashed var(--cnt); border-radius: 6px; padding: 2px 8px; margin-bottom: 10px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="placeholder">Placeholder test UI · not the real app</div>
+  <h1>Counter-melody generator</h1>
+  <p class="sub">Play a melody on the piano. The generator writes one independent line a friend can sing alongside it.</p>
+
+  <section class="panel">
+    <h2>1 · Settings</h2>
+    <div class="row">
+      <label>Key
+        <select id="key">
+          <option value="auto">Detect automatically</option>
+          <option value="c major">C major</option><option value="g major">G major</option>
+          <option value="d major">D major</option><option value="a major">A major</option>
+          <option value="e major">E major</option><option value="f major">F major</option>
+          <option value="bes major">B♭ major</option><option value="ees major">E♭ major</option>
+          <option value="aes major">A♭ major</option>
+          <option value="a minor">A minor</option><option value="e minor">E minor</option>
+          <option value="b minor">B minor</option><option value="d minor">D minor</option>
+          <option value="g minor">G minor</option><option value="c minor">C minor</option>
+        </select>
+      </label>
+      <label>Time
+        <select id="time">
+          <option>4/4</option><option>3/4</option><option>2/4</option><option>6/8</option>
+        </select>
+      </label>
+      <label>Tempo (♩/min)
+        <input id="tempo" type="number" min="40" max="220" value="100">
+      </label>
+      <label>Counter voice
+        <select id="voice">
+          <option value="soprano">Soprano</option><option value="alto" selected>Alto</option>
+          <option value="tenor">Tenor</option><option value="bass">Bass</option>
+        </select>
+      </label>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>2 · Enter the melody</h2>
+    <div class="row" id="durs">
+      <span class="hint">Note length:</span>
+      <button data-d="1">Whole</button>
+      <button data-d="2">Half</button>
+      <button data-d="4" class="on">Quarter</button>
+      <button data-d="8">Eighth</button>
+      <button data-d="16">16th</button>
+      <button id="dot">Dotted</button>
+      <span class="sep"></span>
+      <button id="rest">Add rest</button>
+      <button id="undo">Undo</button>
+      <button id="clear">Clear</button>
+      <button id="example">Load example</button>
+    </div>
+    <div class="piano-wrap"><div class="piano" id="piano"></div></div>
+    <div class="hint">Scroll sideways for C2–C7. Click keys, or type: <b>A W S E D F T G Y H U J K O L</b> = the underlined octave starting at <b id="kbOct">C4</b> · <b>Z / X</b> = octave down / up · <b>1–5</b> = whole to 16th · <b>.</b> = dotted · <b>Space</b> = rest · <b>Backspace</b> = undo</div>
+
+    <h2 style="margin-top:18px">Your melody <span class="hint" id="count"></span></h2>
+    <div class="chips" id="chips"></div>
+    <details>
+      <summary>LilyPond text sent to the generator (you can edit it)</summary>
+      <textarea id="lily" rows="4" spellcheck="false"></textarea>
+    </details>
+    <div class="row" style="margin-top:14px">
+      <button id="playMel">▶ Play melody</button>
+      <button class="primary" id="go">Generate counter-melody</button>
+    </div>
+    <div class="error" id="err"></div>
+  </section>
+
+  <section class="panel hidden" id="result">
+    <h2>3 · Counter-melody</h2>
+    <div class="badges" id="badges"></div>
+    <div class="row">
+      <button id="playBoth">▶ Play both</button>
+      <button id="playCnt">▶ Counter only</button>
+      <button id="playMel2">▶ Melody only</button>
+      <button id="stop">■ Stop</button>
+    </div>
+    <div class="legend">
+      <span><span class="sw" style="background:var(--mel)"></span>Melody</span>
+      <span><span class="sw" style="background:var(--cnt)"></span>Counter-melody</span>
+    </div>
+    <div class="roll-wrap"><svg id="roll"></svg></div>
+
+    <h2 style="margin-top:18px">Counter-melody (LilyPond notes)</h2>
+    <pre class="out" id="bare"></pre>
+    <div class="row">
+      <button id="copyBare">Copy notes</button>
+      <button id="copyLy">Copy full .ly</button>
+      <button id="dlLy">Download .ly</button>
+    </div>
+    <details>
+      <summary>Full LilyPond score</summary>
+      <pre class="out" id="ly"></pre>
+    </details>
+    <div class="warn" id="warns"></div>
+  </section>
+</main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const LOW = 36, HIGH = 96;                       // C2 .. C7 on the piano (5 octaves)
+  const SHARP = ['c','cis','d','dis','e','f','fis','g','gis','a','ais','b'];
+  const FLAT  = ['c','des','d','ees','e','f','ges','g','aes','a','bes','b'];
+  const SHOW_S = ['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
+  const SHOW_F = ['C','D♭','D','E♭','E','F','G♭','G','A♭','A','B♭','B'];
+  const FLAT_KEYS = new Set(['f major','bes major','ees major','aes major','d minor','g minor','c minor']);
+  const DUR_LABEL = {1: '1', 2: '½', 4: '¼', 8: '⅛', 16: '1/16'};
+  const KEYMAP = {a:0,w:1,s:2,e:3,d:4,f:5,t:6,g:7,y:8,h:9,u:10,j:11,k:12,o:13,l:14};  // semitones above the keyboard octave's C
+
+  let notes = [];          // {midi|null, d: 1|2|4|8|16, dot: bool}
+  let dur = 4, dotted = false, result = null, kbOct = 4;   // computer-keyboard octave (C4 by default)
+
+  const useFlats = () => FLAT_KEYS.has($('key').value);
+  const beats = (n) => (4 / n.d) * (n.dot ? 1.5 : 1);
+  const barLen = () => { const [a, b] = $('time').value.split('/').map(Number); return a * 4 / b; };
+  const showName = (m) => (useFlats() ? SHOW_F : SHOW_S)[m % 12] + (Math.floor(m / 12) - 1);
+  function lilyPitch(m) {
+    const oct = Math.floor(m / 12) - 1, marks = oct - 3;
+    return (useFlats() ? FLAT : SHARP)[m % 12] + (marks > 0 ? "'".repeat(marks) : ",".repeat(-marks));
+  }
+
+  // ---------- build the LilyPond text the generator needs ----------
+  function toLily() {
+    const head = [];
+    const k = $('key').value;
+    if (k !== 'auto') { const [t, mode] = k.split(' '); head.push(`\\key ${t} \\${mode}`); }
+    head.push(`\\time ${$('time').value}`, `\\tempo 4 = ${parseInt($('tempo').value, 10) || 100}`);
+    const bl = barLen(); let pos = 0; const body = [];
+    for (const n of notes) {
+      body.push((n.midi === null ? 'r' : lilyPitch(n.midi)) + n.d + (n.dot ? '.' : ''));
+      pos += beats(n);
+      if (Math.abs(pos / bl - Math.round(pos / bl)) < 1e-6) body.push('|');
+    }
+    return head.join(' ') + '\n' + body.join(' ');
+  }
+
+  function refresh() {
+    const box = $('chips'); box.innerHTML = '';
+    if (!notes.length) box.innerHTML = '<span class="empty">No notes yet. Click the piano below.</span>';
+    const bl = barLen(); let pos = 0;
+    notes.forEach((n, i) => {
+      const c = document.createElement('span');
+      c.className = 'chip' + (n.midi === null ? ' rest' : '');
+      c.textContent = (n.midi === null ? 'rest' : showName(n.midi)) + ' ' + DUR_LABEL[n.d] + (n.dot ? '.' : '');
+      c.title = 'Click to delete';
+      c.onclick = () => { notes.splice(i, 1); refresh(); };
+      box.appendChild(c);
+      pos += beats(n);
+      if (Math.abs(pos / bl - Math.round(pos / bl)) < 1e-6) {
+        const b = document.createElement('span'); b.className = 'bar'; box.appendChild(b);
+      }
+    });
+    const total = notes.reduce((s, n) => s + beats(n), 0);
+    $('count').textContent = notes.length ? `· ${notes.length} notes · ${(total / bl).toFixed(total % bl ? 1 : 0)} bars` : '';
+    $('lily').value = toLily();
+    $('go').disabled = $('playMel').disabled = !notes.some(n => n.midi !== null);
+  }
+
+  function add(midi) { notes.push({midi, d: dur, dot: dotted}); refresh(); if (midi !== null) preview(midi); }
+  function setDur(d) { dur = d; document.querySelectorAll('#durs [data-d]').forEach(b => b.classList.toggle('on', +b.dataset.d === d)); }
+  function setDot(v) { dotted = v; $('dot').classList.toggle('on', v); }
+
+  // ---------- piano ----------
+  function buildPiano() {
+    const p = $('piano'); p.innerHTML = '';
+    const W = 32, BW = 20; let x = 0;
+    for (let m = LOW; m <= HIGH; m++) {
+      const black = [1, 3, 6, 8, 10].includes(m % 12);
+      const k = document.createElement('div');
+      k.className = 'key ' + (black ? 'black' : 'white');
+      k.dataset.midi = m;
+      if (black) { k.style.left = (x - BW / 2) + 'px'; k.style.width = BW + 'px'; }
+      else { k.style.left = x + 'px'; k.style.width = W + 'px'; k.textContent = m % 12 === 0 ? 'C' + (m / 12 - 1) : ''; x += W; }
+      k.addEventListener('mousedown', (e) => { e.preventDefault(); add(m); flash(m); });
+      p.appendChild(k);
+    }
+    p.style.width = x + 'px';
+    markKbRange();
+    // open scrolled so middle C is near the left, with an octave of room below it
+    const c3 = document.querySelector('.key[data-midi="48"]');
+    if (c3) p.parentElement.scrollLeft = c3.offsetLeft;
+  }
+  function markKbRange() {
+    const base = 12 * (kbOct + 1);
+    document.querySelectorAll('.key').forEach(k => {
+      const m = +k.dataset.midi;
+      k.classList.toggle('kb', m >= base && m <= base + 14);
+    });
+    $('kbOct').textContent = 'C' + kbOct;
+  }
+  function flash(m) {
+    const k = document.querySelector(`.key[data-midi="${m}"]`);
+    if (k) { k.classList.add('hit'); setTimeout(() => k.classList.remove('hit'), 160); }
+  }
+
+  // ---------- audio ----------
+  let ac = null, playStart = 0, playQpm = 100, raf = 0;
+  const audio = () => (ac ||= new (window.AudioContext || window.webkitAudioContext)());
+  function tone(m, t0, len, kind) {
+    const a = audio(), o = a.createOscillator(), g = a.createGain();
+    o.frequency.value = 440 * Math.pow(2, (m - 69) / 12);
+    let out = g;
+    if (kind === 'cnt') {
+      o.type = 'square';
+      const f = a.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1400;
+      o.connect(f); f.connect(g);
+    } else { o.type = 'triangle'; o.connect(g); }
+    const v = kind === 'cnt' ? 0.09 : 0.22, end = t0 + Math.max(0.06, len - 0.03);
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(v, t0 + 0.02);
+    g.gain.linearRampToValueAtTime(v * 0.7, t0 + Math.min(0.3, len * 0.5));
+    g.gain.linearRampToValueAtTime(0.0001, end);
+    out.connect(a.destination);
+    o.start(t0); o.stop(end + 0.02);
+  }
+  function preview(m) { stop(); tone(m, audio().currentTime + 0.01, 0.35, 'mel'); }
+  function play(parts, qpm) {
+    stop();
+    const a = audio(), spb = 60 / qpm, t0 = a.currentTime + 0.08;
+    let last = 0;
+    for (const [list, kind] of parts)
+      for (const n of list) { tone(n.midi, t0 + n.start * spb, n.dur * spb, kind); last = Math.max(last, n.start + n.dur); }
+    playStart = t0; playQpm = qpm;
+    if (result) animate(last);
+  }
+  function stop() {
+    if (ac) { ac.close(); ac = null; }
+    cancelAnimationFrame(raf); const h = document.getElementById('playhead'); if (h) h.setAttribute('x1', -10), h.setAttribute('x2', -10);
+  }
+  function animate(lastBeat) {
+    const h = document.getElementById('playhead'); if (!h || !ac) return;
+    const beat = (ac.currentTime - playStart) * playQpm / 60;
+    const x = PAD + Math.max(0, beat) * PX;
+    h.setAttribute('x1', x); h.setAttribute('x2', x);
+    if (beat < lastBeat + 0.5) raf = requestAnimationFrame(() => animate(lastBeat));
+  }
+  function melodyFromInput() {
+    let t = 0; const out = [];
+    for (const n of notes) { const b = beats(n); if (n.midi !== null) out.push({midi: n.midi, start: t, dur: b}); t += b; }
+    return out;
+  }
+
+  // ---------- piano roll ----------
+  const PX = 34, ROW = 9, PAD = 34, TOP = 22;
+  function drawRoll(r) {
+    const all = r.melody.concat(r.counter).map(n => n.midi);
+    const lo = Math.min(...all) - 2, hi = Math.max(...all) + 2;
+    const W = PAD + r.total * PX + 12, H = TOP + (hi - lo + 1) * ROW + 8;
+    const css = getComputedStyle(document.documentElement);
+    const col = (v) => css.getPropertyValue(v).trim();
+    const y = (m) => TOP + (hi - m) * ROW;
+    let s = '';
+    for (let m = lo; m <= hi; m++) {
+      if ([1, 3, 6, 8, 10].includes(m % 12)) s += `<rect x="${PAD}" y="${y(m)}" width="${W - PAD}" height="${ROW}" fill="${col('--line')}" opacity=".35"/>`;
+      if (m % 12 === 0) s += `<text x="4" y="${y(m) + ROW - 1}" font-size="10" fill="${col('--muted')}">C${m / 12 - 1}</text>`;
+    }
+    const first = r.pickup > 0 ? r.pickup : 0;
+    for (let b = first; b <= r.total + 1e-6; b += r.bar_len)
+      s += `<line x1="${PAD + b * PX}" x2="${PAD + b * PX}" y1="${TOP - 4}" y2="${H}" stroke="${col('--muted')}" stroke-opacity=".45"/>`;
+    for (const c of r.chords)
+      s += `<text x="${PAD + c.start * PX + 3}" y="14" font-size="11" font-weight="600" fill="${col('--muted')}">${c.name}</text>`;
+    const rect = (n, color) => `<rect x="${PAD + n.start * PX + 1}" y="${y(n.midi) + 1}" width="${Math.max(3, n.dur * PX - 2)}" height="${ROW - 2}" rx="2" fill="${color}"/>`;
+    for (const n of r.melody) s += rect(n, col('--mel'));
+    for (const n of r.counter) s += rect(n, col('--cnt'));
+    s += `<line id="playhead" x1="-10" x2="-10" y1="0" y2="${H}" stroke="${col('--ink')}" stroke-width="2"/>`;
+    const svg = $('roll'); svg.setAttribute('width', W); svg.setAttribute('height', H); svg.innerHTML = s;
+  }
+
+  // ---------- generate ----------
+  async function generate() {
+    $('err').textContent = ''; $('go').disabled = true; $('go').textContent = 'Thinking…';
+    try {
+      const res = await fetch('/api/counter', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({lily: $('lily').value, voice: $('voice').value}),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Something went wrong.');
+      result = data; showResult(data);
+    } catch (e) {
+      $('err').textContent = e.message.includes('fetch') ? 'Cannot reach the server. Is "python placeholder_ui/server.py" still running?' : e.message;
+    } finally {
+      $('go').disabled = false; $('go').textContent = 'Generate counter-melody';
+    }
+  }
+  function showResult(r) {
+    $('result').classList.remove('hidden');
+    const badge = (k, v) => `<span class="badge">${k} <b>${v}</b></span>`;
+    $('badges').innerHTML = [
+      badge('Key', r.key + (r.key_detected ? ` (detected, ${Math.round(r.key_confidence * 100)}%)` : '')),
+      badge('Voice', r.voice + ', ' + r.side + ' the melody'),
+      badge('Style', r.style + (r.echo ? ' + motif echo' : '')),
+      badge('Quality', Math.round(r.quality * 100) + '%'),
+      badge('Own rhythm', Math.round(r.independence * 100) + '% of notes'),
+      r.fallback ? badge('Mode', 'safe fallback') : '',
+    ].join('');
+    $('bare').textContent = r.bare;
+    $('ly').textContent = r.ly;
+    $('warns').textContent = r.warnings.length ? 'Notes: ' + r.warnings.join(' · ') : '';
+    drawRoll(r);
+    $('result').scrollIntoView({behavior: 'smooth', block: 'start'});
+  }
+  function copy(text, btn) {
+    navigator.clipboard.writeText(text).then(() => { const t = btn.textContent; btn.textContent = 'Copied'; setTimeout(() => btn.textContent = t, 1200); });
+  }
+
+  // ---------- wiring ----------
+  document.querySelectorAll('#durs [data-d]').forEach(b => b.onclick = () => setDur(+b.dataset.d));
+  $('dot').onclick = () => setDot(!dotted);
+  $('rest').onclick = () => add(null);
+  $('undo').onclick = () => { notes.pop(); refresh(); };
+  $('clear').onclick = () => { notes = []; refresh(); };
+  $('example').onclick = () => {
+    $('key').value = 'c major'; $('time').value = '4/4'; $('tempo').value = 100;
+    const tw = [[60,4],[60,4],[67,4],[67,4],[69,4],[69,4],[67,2],[65,4],[65,4],[64,4],[64,4],[62,4],[62,4],[60,2],
+                [67,4],[67,4],[65,4],[65,4],[64,4],[64,4],[62,2],[67,4],[67,4],[65,4],[65,4],[64,4],[64,4],[62,2]];
+    notes = tw.map(([midi, d]) => ({midi, d, dot: false})); refresh();
+  };
+  ['key', 'time', 'tempo'].forEach(id => $(id).addEventListener('change', refresh));
+  $('playMel').onclick = () => play([[melodyFromInput(), 'mel']], parseInt($('tempo').value, 10) || 100);
+  $('go').onclick = generate;
+  $('playBoth').onclick = () => play([[result.melody, 'mel'], [result.counter, 'cnt']], result.tempo_qpm);
+  $('playCnt').onclick = () => play([[result.counter, 'cnt']], result.tempo_qpm);
+  $('playMel2').onclick = () => play([[result.melody, 'mel']], result.tempo_qpm);
+  $('stop').onclick = stop;
+  $('copyBare').onclick = (e) => copy(result.bare, e.target);
+  $('copyLy').onclick = (e) => copy(result.ly, e.target);
+  $('dlLy').onclick = () => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([result.ly], {type: 'text/plain'}));
+    a.download = 'counter_melody.ly'; a.click(); URL.revokeObjectURL(a.href);
+  };
+  document.addEventListener('keydown', (e) => {
+    if (e.target.matches('textarea, input, select') || e.metaKey || e.ctrlKey || e.altKey) return;
+    const k = e.key.toLowerCase();
+    if (k in KEYMAP) {
+      const m = 12 * (kbOct + 1) + KEYMAP[k];
+      if (m >= LOW && m <= HIGH) { add(m); flash(m); }
+    }
+    else if (k === 'z' || k === 'x') {
+      kbOct = Math.min(6, Math.max(2, kbOct + (k === 'x' ? 1 : -1)));
+      markKbRange();
+      const first = document.querySelector(`.key[data-midi="${12 * (kbOct + 1)}"]`);
+      if (first) first.scrollIntoView({behavior: 'smooth', block: 'nearest', inline: 'center'});
+    }
+    else if ('12345'.includes(k) && k) setDur([1, 2, 4, 8, 16]['12345'.indexOf(k)]);
+    else if (k === '.') setDot(!dotted);
+    else if (k === ' ') { e.preventDefault(); add(null); }
+    else if (k === 'backspace') { e.preventDefault(); notes.pop(); refresh(); }
+    else return;
+  });
+
+  buildPiano(); refresh();
+})();
+</script>
+</body>
+</html>
