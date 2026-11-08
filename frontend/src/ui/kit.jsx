@@ -4,6 +4,9 @@ import { counterText } from '../project.js';
 
 const px = { fill: 'currentColor', shapeRendering: 'crispEdges' };
 export const Icon = {
+  volume: <svg width="22" height="22" viewBox="0 0 22 22" {...px}><rect x="2" y="8" width="4" height="6"/><rect x="6" y="6" width="2" height="10"/><rect x="8" y="4" width="2" height="14"/><rect x="10" y="2" width="2" height="18"/><rect x="14" y="8" width="2" height="6"/><rect x="18" y="4" width="2" height="14"/></svg>,
+  muted: <svg width="22" height="22" viewBox="0 0 22 22" {...px}><rect x="2" y="8" width="4" height="6"/><rect x="6" y="6" width="2" height="10"/><rect x="8" y="4" width="2" height="14"/><rect x="10" y="2" width="2" height="18"/><rect x="14" y="7" width="2" height="2"/><rect x="18" y="7" width="2" height="2"/><rect x="16" y="9" width="2" height="4"/><rect x="14" y="13" width="2" height="2"/><rect x="18" y="13" width="2" height="2"/></svg>,
+  person: <svg width="22" height="22" viewBox="0 0 22 22" {...px}><rect x="8" y="2" width="6" height="7"/><rect x="6" y="11" width="10" height="2"/><rect x="4" y="13" width="14" height="7"/></svg>,
   play: <svg width="14" height="14" viewBox="0 0 14 14" {...px}><rect x="2" y="1" width="2" height="12"/><rect x="4" y="3" width="2" height="8"/><rect x="6" y="4" width="2" height="6"/><rect x="8" y="5" width="2" height="4"/><rect x="10" y="6" width="2" height="2"/></svg>,
   stop: <svg width="14" height="14" viewBox="0 0 14 14" {...px}><rect x="2" y="2" width="10" height="10"/></svg>,
   left: <svg width="10" height="12" viewBox="0 0 10 12" {...px}><rect x="6" y="0" width="2" height="12"/><rect x="4" y="2" width="2" height="8"/><rect x="2" y="4" width="2" height="4"/></svg>,

@@ -27,8 +27,8 @@ export function MuteSolo({ id, name, mix, setMix }) {
   const toggleMute = () => setMix(m => ({ ...m, mute: { ...m.mute, [id]: !m.mute[id] }, solo: m.solo === id ? null : m.solo }));
   const toggleSolo = () => setMix(m => ({ ...m, solo: m.solo === id ? null : id }));
   return <span className="ms">
-    <button aria-pressed={!!mix.mute[id]} aria-label={`Mute ${name}`} title="Mute" onClick={toggleMute}>M</button>
-    <button aria-pressed={mix.solo === id} aria-label={`Solo ${name}`} title="Solo" onClick={toggleSolo}>S</button>
+    <button aria-pressed={!!mix.mute[id]} aria-label={`Mute ${name}`} title={mix.mute[id] ? 'Unmute' : 'Mute'} onClick={toggleMute}>{mix.mute[id] ? Icon.muted : Icon.volume}</button>
+    <button aria-pressed={mix.solo === id} aria-label={`Solo ${name}`} title="Solo" onClick={toggleSolo}>{Icon.person}</button>
   </span>;
 }
 
