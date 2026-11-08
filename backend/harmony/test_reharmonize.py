@@ -49,15 +49,16 @@ def _longest_note_per_beat(melody, n):
 # --- building blocks -------------------------------------------------------
 
 def test_candidate_set():
-    assert len(CANDIDATES) == 84
-    assert len({c.tones for c in CANDIDATES}) == 84
+    assert len(CANDIDATES) == 96
+    assert len({c.tones for c in CANDIDATES}) == 96
 
 
 def test_parse_chord():
     assert parse_chord("Am7") == Chord(9, "min7")
     assert parse_chord("Bbmaj7") == Chord(10, "maj7")
     assert parse_chord("F#dim") == Chord(6, "dim")
-    assert parse_chord("Bm7b5") == Chord(11, "dim")
+    assert parse_chord("Bm7b5") == Chord(11, "m7b5")
+    assert parse_chord("Bdim") == Chord(11, "dim")
     assert parse_chord("G7/B") == Chord(7, "7")
     assert parse_chord("Dsus4") == Chord(2, "sus4")
     assert parse_chord("N.C.") is None
@@ -282,3 +283,11 @@ def test_harmony_variations_returns_every_style():
     v = harmony_variations(TWINKLE, TWINKLE_CHORDS, {"low": 48, "high": 72})
     assert set(v) == set(HARMONY_STYLES)
     assert all(v[s]["description"] and v[s]["third_above"] for s in v)
+
+
+def test_half_diminished_and_the_circle_of_fifths():
+    """A minor-key ii-V-i with the iiø's own notes in the melody picks the half-diminished chord."""
+    mel = [{"pitch": p, "start": i, "duration": 1} for i, p in enumerate(
+        [69, 72, 76, 72,   71, 74, 77, 74,   68, 71, 74, 76,   69, 72, 76, 69])]  # Am | Bm7b5 | E7 | Am
+    r = reharmonize(mel, None, chord_every=4)[0]
+    assert r.symbols[4] == "Bm7b5", r.symbols

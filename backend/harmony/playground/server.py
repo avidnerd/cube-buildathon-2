@@ -282,7 +282,8 @@ def _lead_hz(f0, n) -> float | None:
     return float(np.median(hz[sel])) if sel.any() else None
 
 
-def _studio_payload(paths, names, melody, beats, voice: dict, job_id: str | None = None) -> list[dict]:
+def _studio_payload(paths, names, melody, beats, voice: dict, job_id: str | None = None,
+                    every: int | None = None, phase: int = 0) -> list[dict]:
     from backend.harmony.reharmonize import _parse_voice_profile
 
     rng = _parse_voice_profile(voice)
@@ -314,7 +315,8 @@ def _studio_payload(paths, names, melody, beats, voice: dict, job_id: str | None
             from backend.harmony.reharmonize import Reharmonization
 
             cl = d["parts"]["classic"]
-            chords = implied_chords(timed, [cl["high"], cl["low"]], beats, len(p.chords), p.key, p.chords)
+            chords = implied_chords(timed, [cl["high"], cl["low"]], beats, len(p.chords), p.key, p.chords,
+                                    every=every or 1, phase=phase)
             q = Reharmonization(chords, p.score, p.beat_len, [], p.original, p.key).to_dict()
             for k in ("chords", "romans", "timeline"):
                 d[k] = q[k]
@@ -326,19 +328,39 @@ def _studio_payload(paths, names, melody, beats, voice: dict, job_id: str | None
     return out
 
 
+def downbeat_phase(melody: list[dict], beats_per_bar: int) -> int:
+    """Which beat (mod the bar) is beat 1, from the melody alone: long, stressed
+    notes ("moon", "stars") tend to start on the downbeat."""
+    w = np.zeros(beats_per_bar)
+    for n in melody:
+        if n.get("start") is None:
+            continue
+        b = float(n["start"])
+        if abs(b - round(b)) < 0.2:
+            w[int(round(b)) % beats_per_bar] += max(float(n.get("duration", 1.0)), 0.25) ** 1.5
+    return int(np.argmax(w)) if w.any() else 0
+
+
 def api_options(req: dict) -> dict:
     melody = req["melody"]
     if not melody:
         raise ValueError("melody is empty")
     bpb = int(req.get("beats_per_bar", 4))
-    every = int(req.get("chord_every", 2)) or None
+    ce = req.get("chord_every", "bar")
+    every = bpb if ce in ("bar", None) else (int(ce) or None)   # default: one chord per bar
+    phase = 0
+    if every and every > 1 and not req.get("chords"):
+        # Beat 1 is where chord changes fit the melody best: try each position.
+        fits = [reharmonize(melody, None, 0.0, beats_per_bar=bpb, chord_every=every, phase=p, n_paths=1)[0].score
+                for p in range(every)]
+        phase = int(np.argmax(fits))
     detected = req.get("chords")
     if detected:
         # The song's own chords are the starting point.
         base_chords, base_symbols = detected, list(detected)
     else:
         # A bare voice: the plain harmonization its melody implies.
-        base = reharmonize(melody, None, 0.0, beats_per_bar=bpb, chord_every=every)[0]
+        base = reharmonize(melody, None, 0.0, beats_per_bar=bpb, chord_every=every, phase=phase)[0]
         base_chords, base_symbols = base.chords, base.symbols
 
     locks = {int(k): v for k, v in (req.get("locks") or {}).items()}
@@ -358,12 +380,13 @@ def api_options(req: dict) -> dict:
             locks=option_locks or None,
             beats_per_bar=bpb,
             chord_every=every,
+            phase=phase,
         )
         fresh = [c for c in cands if all(c.symbols != o.symbols for o in chosen)]
         if fresh:
             chosen.append(fresh[0])
             names.append(name)
-    payload = _studio_payload(chosen, names, melody, req.get("beats"), req["voice"], req.get("job"))
+    payload = _studio_payload(chosen, names, melody, req.get("beats"), req["voice"], req.get("job"), every, phase)
     for d, name in zip(payload, names):
         d["name"] = name
     arrangements = {k: {"label": v["label"], "parts": [{"id": pid, "label": lbl} for pid, lbl, _, _ in v["parts"]]}

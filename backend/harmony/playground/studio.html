@@ -244,7 +244,7 @@
       <div class="k">Try a flavour</div>
       <div class="row" id="lenses"></div>
       <div class="k">Chords change</div>
-      <div class="seg" id="every"><button data-v="1" aria-pressed="false">every beat</button><button data-v="2" aria-pressed="true">every 2 beats</button><button data-v="4" aria-pressed="false">every bar</button></div>
+      <div class="seg" id="every"><button data-v="1" aria-pressed="false">every beat</button><button data-v="2" aria-pressed="false">every 2 beats</button><button data-v="bar" aria-pressed="true">every bar</button><button data-v="half" aria-pressed="false">every 2 bars</button></div>
     </div>
     <details style="margin-top:12px">
       <summary class="muted" style="cursor:pointer">Why these chords?</summary>
@@ -312,7 +312,7 @@ const HOLD = "~";
 
 const S = {
   ctx: null, source: null, mix: null, stems: {}, res: null, opts: null, sel: 0,
-  arr: "classic", mode: "voice", locks: {}, palette: {}, every: 2,
+  arr: "classic", mode: "voice", locks: {}, palette: {}, every: "bar",
   part: "high", backing: null, guide: "voice", listen: "all", along: "others",
   renders: new Map(), playing: null, mic: null,
 };
@@ -1103,7 +1103,7 @@ async function init() {
     $("lenses").appendChild(b);
   }
   segmented("mode", (v) => { S.mode = v; stopAll(); });
-  segmented("every", (v) => { S.every = +v; S.locks = {}; stopAll(); fetchOptions(); });
+  segmented("every", (v) => { S.every = v === "bar" ? "bar" : v === "half" ? 2 * (S.res?.beats_per_bar || 4) : +v; S.locks = {}; stopAll(); fetchOptions(); });
 
   segmented("guide", (v) => { S.guide = v; stopAll(); });
   segmented("along", (v) => { S.along = v; stopAll(); });

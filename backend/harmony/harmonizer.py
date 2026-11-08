@@ -467,7 +467,8 @@ def mirror_runs(melody: Sequence[dict], part: list[dict]) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def implied_chords(melody: Sequence[dict], parts: Sequence[Sequence[dict]], beats: Sequence[float],
-                   n_beats: int, key: tuple[int, str], fallback: Sequence[Chord | None]) -> list[Chord | None]:
+                   n_beats: int, key: tuple[int, str], fallback: Sequence[Chord | None],
+                   every: int = 1, phase: int = 0) -> list[Chord | None]:
     """With no band, the chord is whatever the lead and harmony voices spell.
     Per beat: duration-weighted pitch classes of all voices, matched to chord
     templates (triads preferred, staying put preferred), smoothed by holding the
@@ -479,11 +480,23 @@ def implied_chords(melody: Sequence[dict], parts: Sequence[Sequence[dict]], beat
     in_key = np.array([c.tones <= sc for c in CANDIDATES], dtype=float)
     triad = np.array([len(c.tones) == 3 and c.quality in ("maj", "min") for c in CANDIDATES], dtype=float)
     unit = MASKS / np.linalg.norm(MASKS, axis=1, keepdims=True)
+    def bt(b):
+        return beats[b] if b < len(beats) else beats[-1] + (b - len(beats) + 1) * (beats[-1] - beats[-2])
+
+    # One chord per harmonic-rhythm segment (e.g. per bar, starting at the downbeat).
+    every = max(1, int(every))
+    starts = sorted({0} | {b for b in range(n_beats) if (b - phase) % every == 0})
+    seg_of = np.searchsorted(starts, np.arange(n_beats), side="right") - 1
+    seg_chord: dict[int, Chord | None] = {}
     out: list[Chord | None] = []
     prev: int | None = None
     for b in range(n_beats):
-        t0 = beats[b] if b < len(beats) else beats[-1] + (b - len(beats) + 1) * (beats[-1] - beats[-2])
-        t1 = beats[b + 1] if b + 1 < len(beats) else t0 + (beats[-1] - beats[-2])
+        si = int(seg_of[b])
+        if si in seg_chord:
+            out.append(seg_chord[si])
+            continue
+        t0 = bt(starts[si])
+        t1 = bt(starts[si + 1]) if si + 1 < len(starts) else bt(n_beats)
         w = np.zeros(12)
         for voice in (melody, *parts):
             for n in voice:
@@ -491,13 +504,19 @@ def implied_chords(melody: Sequence[dict], parts: Sequence[Sequence[dict]], beat
                 if ov > 0:
                     w[int(n["pitch"]) % 12] += ov
         if w.sum() < 0.05 or np.count_nonzero(w) < 2:
-            out.append(CANDIDATES[prev] if prev is not None else (fallback[b] if b < len(fallback) else None))
+            seg_chord[si] = CANDIDATES[prev] if prev is not None else (fallback[b] if b < len(fallback) else None)
+            out.append(seg_chord[si])
             continue
         score = unit @ (w / np.linalg.norm(w)) + 0.08 * in_key + 0.06 * triad
+        # the chord that was planned here (the base progression) is the natural reading
+        fb = fallback[b] if b < len(fallback) else None
+        if fb is not None:
+            score[fb.index] += 0.12
         if prev is not None:
-            score[prev] += 0.1
+            score[prev] += 0.05
         prev = int(np.argmax(score))
-        out.append(CANDIDATES[prev])
+        seg_chord[si] = CANDIDATES[prev]
+        out.append(seg_chord[si])
     return out
 
 

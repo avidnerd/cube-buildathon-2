@@ -83,6 +83,7 @@ QUALITIES: dict[str, tuple[int, ...]] = {
     "min7": (0, 3, 7, 10),
     "dim": (0, 3, 6),
     "sus4": (0, 5, 7),
+    "m7b5": (0, 3, 6, 10),   # half-diminished: the ii of a minor key (Bm7b5 in A minor), everywhere in standards
 }
 QUALITY_ORDER = tuple(QUALITIES)
 
@@ -96,9 +97,10 @@ TENSIONS: dict[str, tuple[int, ...]] = {
     "min7": (2, 5, 9),
     "dim": (2, 5),
     "sus4": (2, 9, 10),
+    "m7b5": (5, 8),
 }
 
-SUFFIX = {"maj": "", "min": "m", "7": "7", "maj7": "maj7", "min7": "m7", "dim": "dim", "sus4": "sus4"}
+SUFFIX = {"maj": "", "min": "m", "7": "7", "maj7": "maj7", "min7": "m7", "dim": "dim", "sus4": "sus4", "m7b5": "m7b5"}
 NOTE_NAMES = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]
 _LETTER_PC = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 
@@ -152,7 +154,9 @@ def _parse_quality(rest: str) -> str:
     # Order matters: "maj7" before "m", "m7b5" before "m7".
     if low.startswith(("maj7", "ma7", "maj9", "maj13")) or s.startswith(("M7", "M9", "Δ")):
         return "maj7"
-    if low.startswith(("m7b5", "min7b5", "-7b5", "ø", "dim", "°", "o")):
+    if low.startswith(("m7b5", "min7b5", "-7b5", "ø")):
+        return "m7b5"
+    if low.startswith(("dim", "°", "o")):
         return "dim"
     if low.startswith("sus"):
         return "sus4"
@@ -336,7 +340,7 @@ def voice_leading_distance(a: Chord, b: Chord) -> int:
 VL = np.array([[voice_leading_distance(a, b) for b in CANDIDATES] for a in CANDIDATES], dtype=float)
 
 # Root-motion cost by interval (b.root - a.root) mod 12, used everywhere.
-ROOT_MOTION = {0: 0.0, 5: -0.15, 7: 0.0, 2: 0.1, 10: 0.05, 3: 0.1, 9: 0.1, 4: 0.15, 8: 0.1, 1: 0.35, 11: 0.3, 6: 0.8}
+ROOT_MOTION = {0: 0.0, 5: -0.3, 7: 0.0, 2: 0.1, 10: 0.05, 3: 0.1, 9: 0.1, 4: 0.15, 8: 0.1, 1: 0.35, 11: 0.3, 6: 0.8}
 
 # Idiomatic progressions by scale degree (root semitones above the tonic).
 # Negative = cheap. Works for major and minor keys since degrees are absolute.
@@ -363,6 +367,13 @@ FUNCTIONAL = {
     (10, 3): -0.2,  # bVII -> bIII
     (1, 0): -0.3,   # bII  -> I   (tritone sub)
     (0, 3): -0.1,   # I    -> bIII
+    # The diatonic circle of fifths (vi-ii-V-I-IV-viiø-III7-vi), as in "Fly Me
+    # to the Moon" / "Autumn Leaves": the IV -> viiø step is a tritone in the
+    # bass, but completely idiomatic, not a jarring leap.
+    (5, 11): -1.4,  # IV   -> viiø  (cancels the generic tritone-leap cost)
+    (11, 4): -0.5,  # viiø -> III(7)  (V7 of the relative minor)
+    (8, 2): -1.4,   # bVI  -> iiø    (the same step counted from the relative minor)
+    (2, 7): -0.5,   # ii(ø) -> V
 }
 
 
@@ -503,7 +514,7 @@ def _next_note(notes: Sequence[Note], i: int) -> Note | None:
 _MAJOR_SCALE = (0, 2, 4, 5, 7, 9, 11)
 _MINOR_SCALE = (0, 2, 3, 5, 7, 8, 10)
 _ROMAN = {0: "I", 1: "bII", 2: "II", 3: "bIII", 4: "III", 5: "IV", 6: "#IV", 7: "V", 8: "bVI", 9: "VI", 10: "bVII", 11: "VII"}
-_ROMAN_SUFFIX = {"maj": "", "min": "", "7": "7", "maj7": "maj7", "min7": "7", "dim": "°", "sus4": "sus4"}
+_ROMAN_SUFFIX = {"maj": "", "min": "", "7": "7", "maj7": "maj7", "min7": "7", "dim": "°", "sus4": "sus4", "m7b5": "ø7"}
 
 
 def _scales(tonic: int, mode: str) -> tuple[frozenset[int], frozenset[int]]:
@@ -606,7 +617,8 @@ def _plain_prior(tonic: int, mode: str) -> np.ndarray:
         deg = (c.root - tonic) % 12
         prior[i] += 0.8 * (c.tones <= home)
         prior[i] += 0.3 * (deg in primary) + 0.15 * (deg in secondary)
-        prior[i] -= {"sus4": 0.4, "dim": 0.3, "7": 0.15, "maj7": 0.2, "min7": 0.2}.get(c.quality, 0.0)
+        diatonic_half_dim = c.quality == "m7b5" and deg == (11 if mode == "major" else 2)  # viiø / iiø: the key's own
+        prior[i] -= 0.0 if diatonic_half_dim else {"sus4": 0.4, "dim": 0.3, "7": 0.15, "maj7": 0.2, "min7": 0.2, "m7b5": 0.25}.get(c.quality, 0.0)
     return prior
 
 
@@ -821,6 +833,7 @@ def reharmonize(
     lam: float = LAMBDA,
     n_paths: int = 3,
     chord_every: int | None = None,
+    phase: int = 0,
 ) -> list[Reharmonization]:
     """Reharmonize `melody` starting from the detected `chords`.
 
@@ -833,7 +846,8 @@ def reharmonize(
     locks: beats the user has decided on. Either {beat: chord} or a list of
         beats to keep as detected. The search works around them.
     chords: may be empty/None to harmonize a bare melody (e.g. a recording).
-    chord_every: only allow chord changes every N beats (harmonic rhythm).
+    chord_every: only allow chord changes every N beats (harmonic rhythm),
+        on beats where (beat - phase) % chord_every == 0 (phase = the downbeat).
 
     Returns up to `n_paths` alternatives, best first, each with explanations.
     """
@@ -926,7 +940,7 @@ def reharmonize(
     B = _lens_transition(palette, tonic)
     frozen = None
     if chord_every and chord_every > 1:
-        frozen = [t % chord_every != 0 for t in range(n_beats)]
+        frozen = [(t - phase) % chord_every != 0 for t in range(n_beats)]
         if locks is not None:  # a locked chord must be reachable
             for t in (locks.keys() if isinstance(locks, dict) else locks):
                 if 0 <= int(t) < n_beats:

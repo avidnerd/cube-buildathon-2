@@ -17,6 +17,7 @@ Pipeline:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Sequence
 
 import numpy as np
 
@@ -207,6 +208,104 @@ def absorb_ornaments(notes: list[RawNote]) -> list[RawNote]:
     return out
 
 
+# ---------------------------------------------------------------------------
+# Drift-aware, key-aware note naming
+# ---------------------------------------------------------------------------
+
+_SCALES = {"major": (0, 2, 4, 5, 7, 9, 11), "minor": (0, 2, 3, 5, 7, 8, 10)}
+DRIFT_GRID = np.round(np.arange(-1.2, 1.2001, 0.05), 3)  # semitones: singers drift up to ~a semitone over a phrase
+DRIFT_STEP = 0.12      # typical tuning change between consecutive notes
+PITCH_SIGMA = 0.35     # per-note intonation scatter: real singers overshoot leaps by up to ~a semitone
+OUT_OF_KEY = 4.0       # cost of a chromatic note (allowed when clearly sung)
+DRIFT_PRIOR = 0.05     # tie-breaker: prefer drift near the average tuning when the key evidence is thin
+
+
+def name_notes(midi: Sequence[float], dur: Sequence[float]) -> tuple[list[int], tuple[int, str], np.ndarray]:
+    """Each note = scale pitch + slowly drifting tuning, found jointly (Viterbi).
+
+    A global tuning offset fails for real singers, who drift (often flat on a
+    descending line): a note 0.5 semitone off can't be rounded reliably. Here
+    every key is tried; for each, the best path of (pitch, drift) explains the
+    sung pitches closely, prefers in-key notes, and lets the drift move only
+    slowly. Returns (pitches, key, drift per note).
+    """
+    m = np.asarray(midi, dtype=float)
+    w = np.sqrt(np.clip(np.asarray(dur, dtype=float), 0.05, 1.0) / 0.25)  # longer notes count more
+    n = len(m)
+    if n == 0:
+        return [], (0, "major"), np.zeros(0)
+    D = DRIFT_GRID
+    trans = ((D[:, None] - D[None, :]) / DRIFT_STEP) ** 2  # (d_prev, d)
+    best = None
+    for mode, sc in _SCALES.items():
+        for tonic in range(12):
+            inkey = {(tonic + i) % 12 for i in sc}
+            Q = [np.arange(int(np.floor(v)) - 1, int(np.ceil(v)) + 2) for v in m]  # candidate pitches
+            def emit(i):
+                q = Q[i][:, None]
+                e = w[i] * ((m[i] - q - D[None, :]) / PITCH_SIGMA) ** 2
+                e = e + OUT_OF_KEY * np.array([[0.0 if int(p) % 12 in inkey else 1.0] for p in Q[i]])
+                # Drift wanders around the singer's average tuning, not a whole
+                # semitone away from it for the whole song (that's just the same
+                # tune named a semitone off).
+                e = e + DRIFT_PRIOR * (D[None, :] / 0.5) ** 2
+                return e  # (|Q|, |D|)
+            acc = emit(0)                       # cost per (q, d)
+            back = []
+            for i in range(1, n):
+                prev_best_d = acc.min(axis=0)     # best over previous q for each previous d
+                arg_q = acc.argmin(axis=0)
+                tot = prev_best_d[:, None] + trans  # (d_prev, d)
+                bd = tot.argmin(axis=0)
+                acc = emit(i) + tot.min(axis=0)[None, :]
+                back.append((arg_q, bd))
+            cost = float(acc.min())
+            if best is None or cost < best[0]:
+                qi, di = np.unravel_index(int(acc.argmin()), acc.shape)
+                path_q, path_d = [int(Q[n - 1][qi])], [float(D[di])]
+                for i in range(n - 1, 0, -1):
+                    arg_q, bd = back[i - 1]
+                    di = int(bd[di])
+                    qi = int(arg_q[di])
+                    path_q.append(int(Q[i - 1][qi]))
+                    path_d.append(float(D[di]))
+                best = (cost, path_q[::-1], (tonic, mode), np.array(path_d[::-1]))
+    return best[1], best[2], best[3]
+
+
+def split_level_changes(notes: list[RawNote], times: np.ndarray, midi: np.ndarray,
+                        min_side: float = 0.12, min_step: float = 0.7) -> list[RawNote]:
+    """Split a note where the pitch settles at a new level (a slid step like
+    'Fly-me'), even if it got there smoothly. Both sides must be held and steady."""
+    out: list[RawNote] = []
+    for n in notes:
+        sel = np.flatnonzero((times >= n.t0) & (times <= n.t1) & ~np.isnan(midi))
+        v = midi[sel]
+        best = None
+        for k in range(len(v)):
+            a, b = v[:k], v[k:]
+            if len(a) < 2 or len(b) < 2:
+                continue
+            if times[sel[k]] - n.t0 < min_side or n.t1 - times[sel[k]] < min_side:
+                continue
+            ma, mb = np.median(a[len(a) // 3:]), np.median(b[: max(1, 2 * len(b) // 3)])
+            if abs(mb - ma) < min_step:
+                continue
+            if np.std(a[len(a) // 3:]) > 0.35 or np.std(b[: max(2, 2 * len(b) // 3)]) > 0.35:
+                continue
+            gain = abs(mb - ma)
+            if best is None or gain > best[0]:
+                best = (gain, k, ma, mb)
+        if best is None:
+            out.append(n)
+            continue
+        _, k, ma, mb = best
+        t = float(times[sel[k]])
+        out.append(RawNote(n.t0, t, int(round(ma)), float(ma)))
+        out.append(RawNote(t, n.t1, int(round(mb)), float(mb)))
+    return out
+
+
 def _short_rms(x: np.ndarray, sr: int, times: np.ndarray, win_s: float = 0.016) -> np.ndarray:
     """Loudness on a short window at each frame centre (pitch frames are too long
     to see the brief dip between re-articulated notes)."""
@@ -375,6 +474,10 @@ def transcribe(samples: np.ndarray, sr: int, bpm: float | None = None, offset: f
     midi = midi - off
 
     raw = absorb_ornaments(_segment(times, midi, _short_rms(x, sr, times)))
+    raw = split_level_changes(raw, times, midi)
+    # Name the notes with drift + key awareness instead of plain rounding.
+    names, _key, drift = name_notes([n.midi for n in raw], [n.t1 - n.t0 for n in raw])
+    raw = [RawNote(n.t0, n.t1, q, n.midi) for n, q in zip(raw, names)]
     lag_ms = 0.0
     if beat_grid is None and bpm is None:
         # No click, no band: find the tempo from the sung notes themselves.

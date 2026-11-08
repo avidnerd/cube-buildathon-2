@@ -133,3 +133,24 @@ def test_tempo_detected_from_singing_alone(bpm):
     got = tr.meta["bpm"]
     assert got == pytest.approx(bpm, rel=0.05) or got == pytest.approx(2 * bpm, rel=0.05) or got == pytest.approx(bpm / 2, rel=0.05), got
     assert [n["pitch"] for n in tr.notes][:7] == [60, 60, 67, 67, 69, 69, 67]
+
+
+def test_notes_named_through_a_drifting_singer():
+    """A descending C-major line sung progressively flat (down to ~0.9 semitone)
+    must still read as C B A G F E D C, not as chromatic notes."""
+    from backend.harmony.transcribe import name_notes
+    true = [72, 71, 69, 67, 65, 64, 62, 60]
+    drift = np.linspace(0, -0.9, len(true))
+    sung = [p + d + e for p, d, e in zip(true, drift, (0.1, -0.15, 0.05, 0.2, -0.1, 0.0, 0.15, -0.05))]
+    names, key, _ = name_notes(sung, [0.4] * len(true))
+    assert [n - true[0] for n in names] == [p - true[0] for p in true]   # right intervals throughout
+
+
+def test_slid_step_inside_one_note_is_split():
+    """'Fly-me': the singer slides from C down to B without a break."""
+    from backend.harmony.transcribe import RawNote, split_level_changes
+    times = np.arange(0, 0.8, 0.01)
+    midi = np.where(times < 0.4, 60.0, 59.0) + 0.05 * np.sin(times * 30)
+    midi[38:44] = np.linspace(60, 59, 6)
+    out = split_level_changes([RawNote(0.0, 0.8, 60, 59.5)], times, midi)
+    assert [n.pitch for n in out] == [60, 59]

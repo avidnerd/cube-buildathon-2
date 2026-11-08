@@ -26,7 +26,7 @@ FPS = SR / HOP
 # a fifth up, 5th harmonic = a major third up), since real instruments put
 # energy there too.
 _OVERTONES = ((0, 1.0), (7, 0.33), (4, 0.2))
-QUALITY_PRIOR = {"maj": 0.0, "min": 0.0, "7": -0.02, "maj7": -0.03, "min7": -0.02, "dim": -0.08, "sus4": -0.07}
+QUALITY_PRIOR = {"maj": 0.0, "min": 0.0, "7": -0.02, "maj7": -0.03, "min7": -0.02, "dim": -0.08, "sus4": -0.07, "m7b5": -0.05}
 W_EMISSION = 6.0
 W_BASS = 0.6
 CHANGE_COST = 0.7
