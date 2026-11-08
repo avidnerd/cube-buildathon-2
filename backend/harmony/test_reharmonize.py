@@ -4,8 +4,11 @@ import pytest
 
 from backend.harmony.reharmonize import (
     CANDIDATES,
+    HARMONY_STYLES,
     Chord,
+    _parse_voice_profile,
     harmony_parts,
+    harmony_variations,
     parse_chord,
     phase_distance,
     reharmonize,
@@ -114,7 +117,8 @@ def test_returns_three_distinct_alternatives():
 
 def test_to_dict_timeline_merges_beats():
     d = reharmonize(TWINKLE, TWINKLE_CHORDS, novelty=0.0)[0].to_dict()
-    assert d["timeline"][0] == {"symbol": "C", "start": 0, "end": 4}
+    assert d["timeline"][0] == {"symbol": "C", "roman": "I", "start": 0, "end": 4}
+    assert d["key"] == {"tonic": "C", "mode": "major"}
 
 
 # --- harmony parts ---------------------------------------------------------
@@ -130,8 +134,6 @@ VOICES = [
 @pytest.mark.parametrize("vp", VOICES)
 def test_harmony_parts_stay_in_range(vp):
     rng = random.Random(0)
-    from backend.harmony.reharmonize import _parse_voice_profile
-
     low, high, _, strong_high = _parse_voice_profile(vp)
     for _ in range(20):
         melody = [{"pitch": rng.randint(45, 84), "start": i * 0.5, "duration": 0.5} for i in range(32)]
@@ -169,3 +171,114 @@ def test_harmony_parts_accepts_reharmonization():
     parts = harmony_parts(TWINKLE, best, {"low": 48, "high": 72})
     for m, u in zip(TWINKLE, parts["third_above"]):
         assert u["pitch"] % 12 in best.chords[int(m["start"])].tones
+
+
+# --- creative controls: lenses, locks, explanations ------------------------
+
+# ii-V-I melody: F/D over Dm7, F/B over G7, E/C over C.
+II_V_I = [{"pitch": p, "start": i, "duration": 1}
+          for i, p in enumerate([65, 62, 65, 71, 64, 64, 64, 64, 65, 69, 65, 71, 72, 72, 72, 72])]
+II_V_I_CHORDS = ["Dm7", "Dm7", "G7", "G7", "C", "C", "C", "C", "Dm7", "Dm7", "G7", "G7", "C", "C", "C", "C"]
+
+
+def _best(melody, chords, **kw):
+    return reharmonize(melody, chords, **kw)[0]
+
+
+def test_lenses_change_output_even_at_novelty_zero():
+    base = _best(TWINKLE, TWINKLE_CHORDS).symbols
+    for lens in ("borrowed", "color", "suspense", "passing"):
+        assert _best(TWINKLE, TWINKLE_CHORDS, palette={lens: 1.0}).symbols != base, lens
+
+
+def test_borrowed_lens_uses_parallel_minor():
+    r = _best(TWINKLE, TWINKLE_CHORDS, palette={"borrowed": 1.0})
+    assert {"Cm", "Fm"} & set(r.symbols)
+    assert any("borrowed from C minor" in tag for e in r.explain() for tag in e["tags"])
+
+
+def test_tritone_lens_substitutes_the_dominant():
+    r = _best(II_V_I, II_V_I_CHORDS, palette={"tritone": 1.0})
+    assert "C#7" in r.symbols  # bII7 -> I instead of G7 -> C
+    assert any("tritone substitution" in tag for e in r.explain() for tag in e["tags"])
+
+
+def test_color_lens_prefers_diatonic_sevenths():
+    r = _best(II_V_I, II_V_I_CHORDS, palette={"color": 1.0})
+    assert "Cmaj7" in r.symbols and "C7" not in r.symbols
+
+
+def test_density_lens_controls_harmonic_rhythm():
+    def changes(d):
+        s = _best(TWINKLE, TWINKLE_CHORDS, novelty=0.5, palette={"density": d}).symbols
+        return sum(a != b for a, b in zip(s, s[1:]))
+    assert changes(0.0) < changes(1.0)
+
+
+def test_unknown_lens_rejected():
+    with pytest.raises(ValueError):
+        reharmonize(TWINKLE, TWINKLE_CHORDS, palette={"vibes": 1})
+
+
+def test_locks_are_respected():
+    locks = {0: "Am", 4: "Dm7", 15: "C"}
+    for r in reharmonize(TWINKLE, TWINKLE_CHORDS, novelty=1.0, locks=locks):
+        assert r.symbols[0] == "Am" and r.symbols[4] == "Dm7" and r.symbols[15] == "C"
+    # A plain list of beats keeps the detected chord there.
+    r = _best(TWINKLE, TWINKLE_CHORDS, novelty=1.0, locks=[12, 13])
+    assert r.symbols[12:14] == ["G", "G"]
+
+
+def test_explanations_cover_every_changed_segment():
+    r = _best(TWINKLE, TWINKLE_CHORDS, novelty=1.0)
+    expl = r.explain()
+    covered = {t for e in expl for t in range(int(e["start"]), int(e["end"]))}
+    assert set(r.changed_beats) <= covered
+    assert all(e["tags"] and e["roman"] for e in expl)
+
+
+# --- harmony styles ----------------------------------------------------------
+
+@pytest.mark.parametrize("style", sorted(HARMONY_STYLES))
+@pytest.mark.parametrize("vp", VOICES)
+def test_every_style_stays_in_range_on_chord_tones(style, vp):
+    rng = random.Random(1)
+    low, high, _, _ = _parse_voice_profile(vp)
+    for _ in range(10):
+        melody = [{"pitch": rng.randint(50, 80), "start": i * 0.5, "duration": 0.5} for i in range(24)]
+        chords = [rng.choice(CANDIDATES).name for _ in range(12)]
+        parts = harmony_parts(melody, chords, vp, style=style)
+        for track in parts.values():
+            for note in track:
+                assert low <= note["pitch"] <= high
+                chord = parse_chord(chords[int(note["start"])])
+                # Wide ranges always allow a chord tone.
+                if high - low >= 12:
+                    assert note["pitch"] % 12 in chord.tones
+
+
+def test_pad_style_holds_notes_across_the_chord():
+    vp = {"low": 45, "high": 74, "strongLow": 48, "strongHigh": 70}
+    pad = harmony_parts(TWINKLE, TWINKLE_CHORDS, vp, style="pad")
+    par = harmony_parts(TWINKLE, TWINKLE_CHORDS, vp, style="parallel")
+    assert len(pad["sixth_below"]) < len(par["sixth_below"])
+    total = sum(n["duration"] for n in pad["sixth_below"])
+    assert total == pytest.approx(sum(n["duration"] for n in TWINKLE))
+
+
+def test_contrary_style_moves_against_the_melody():
+    vp = {"low": 45, "high": 74, "strongLow": 48, "strongHigh": 70}
+
+    def contrary_moves(style):
+        part = harmony_parts(TWINKLE, TWINKLE_CHORDS, vp, style=style)["sixth_below"]
+        m = [n["pitch"] for n in TWINKLE]
+        p = [n["pitch"] for n in part]
+        return sum((m[i] - m[i - 1]) * (p[i] - p[i - 1]) < 0 for i in range(1, len(m)))
+
+    assert contrary_moves("contrary") > contrary_moves("voice_led")
+
+
+def test_harmony_variations_returns_every_style():
+    v = harmony_variations(TWINKLE, TWINKLE_CHORDS, {"low": 48, "high": 72})
+    assert set(v) == set(HARMONY_STYLES)
+    assert all(v[s]["description"] and v[s]["third_above"] for s in v)

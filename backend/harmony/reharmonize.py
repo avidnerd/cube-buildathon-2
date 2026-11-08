@@ -1,15 +1,30 @@
 """Reharmonization and harmony-part generation.
 
-Two public entry points:
+No machine learning: every choice is a named, explainable music-theory move
+the user can steer, lock, or reject. The tool proposes; the musician decides.
 
-    reharmonize(melody, chords, novelty=0.0, ...) -> list[Reharmonization]
+Public entry points:
+
+    reharmonize(melody, chords, novelty=0.0, palette=None, locks=None, ...)
+        -> list[Reharmonization]
         Viterbi over beats on 84 candidate chords (12 roots x 7 qualities).
         Returns the top 3 (diverse) paths so the UI can offer alternatives.
+          novelty  how far from the detected chords to go (0..1)
+          palette  which *kind* of move: LENSES (borrowed, secondary, tritone,
+                   color, passing, suspense, density), each 0..1
+          locks    beats the user has decided on; the search works around them
+        Each result has .explain(): per changed segment, roman numeral plus
+        reasons ("secondary dominant: V7/ii", "borrowed from C minor", ...).
 
-    harmony_parts(melody, chords, voice_profile) -> {"third_above": [...], "sixth_below": [...]}
-        Two backing lines that follow the melody's rhythm. Each note is snapped
-        to a chord tone of the chord sounding at that moment, so the interval
-        bends to the harmony instead of being a fixed transposition.
+    harmony_parts(melody, chords, voice_profile, style="parallel")
+        -> {"third_above": [...], "sixth_below": [...]}
+        Two backing lines. Each note is snapped to a chord tone of the chord
+        sounding at that moment, so the interval bends to the harmony instead
+        of being a fixed transposition. Styles: HARMONY_STYLES (parallel,
+        voice_led, contrary, pad).
+
+    harmony_variations(melody, chords, voice_profile) -> {style: parts}
+        Every style side by side, for the singer to audition.
 
 Conventions
     * Time is measured in beats (floats). One window = one beat by default
@@ -365,9 +380,9 @@ VL_SCALE = 4.0  # semitones of total motion that cost as much as 1.0 of emission
 CHANGE_COST = 0.5  # flat cost of changing chord at all; keeps harmonic rhythm from going beat-by-beat
 
 
-def transition_matrix(tonic: int) -> np.ndarray:
+def transition_matrix(tonic: int, change_cost: float = CHANGE_COST) -> np.ndarray:
     func = np.array([[functional_cost(a, b, tonic) for b in CANDIDATES] for a in CANDIDATES])
-    change = CHANGE_COST * (1.0 - np.eye(N_CAND))
+    change = change_cost * (1.0 - np.eye(N_CAND))
     return VL / VL_SCALE + func + change
 
 
@@ -468,15 +483,31 @@ def _next_note(notes: Sequence[Note], i: int) -> Note | None:
     return None
 
 
+
 # ---------------------------------------------------------------------------
-# Viterbi
+# Key, scales, roman numerals
 # ---------------------------------------------------------------------------
 
-W_NOVELTY = 1.0     # linear bonus for phase distance from the original chord
-W_TARGET = 8.0      # quadratic pull toward distance = novelty * D_TARGET_MAX
-D_TARGET_MAX = 0.5  # typical borrowed-chord distance (C->Fm 0.46, C->Ab 0.38, C->Eb 0.46)
-W_EXACT = 1.2       # pull toward the exact detected chord, fades out with novelty
-W_OUT_OF_KEY = 2.0  # per-fraction of chord tones outside the modal-interchange pool
+_MAJOR_SCALE = (0, 2, 4, 5, 7, 9, 11)
+_MINOR_SCALE = (0, 2, 3, 5, 7, 8, 10)
+_ROMAN = {0: "I", 1: "bII", 2: "II", 3: "bIII", 4: "III", 5: "IV", 6: "#IV", 7: "V", 8: "bVI", 9: "VI", 10: "bVII", 11: "VII"}
+_ROMAN_SUFFIX = {"maj": "", "min": "", "7": "7", "maj7": "maj7", "min7": "7", "dim": "°", "sus4": "sus4"}
+
+
+def _scales(tonic: int, mode: str) -> tuple[frozenset[int], frozenset[int]]:
+    """(home scale, parallel scale). Minor includes the harmonic-minor leading tone."""
+    major = frozenset((tonic + i) % 12 for i in _MAJOR_SCALE)
+    minor = frozenset((tonic + i) % 12 for i in _MINOR_SCALE) | {(tonic + 11) % 12}
+    return (major, minor) if mode == "major" else (minor, major)
+
+
+def roman(chord: Chord | None, tonic: int, *, suffix: bool = True) -> str:
+    if chord is None:
+        return "N.C."
+    numeral = _ROMAN[(chord.root - tonic) % 12]
+    if chord.quality in ("min", "min7", "dim"):
+        numeral = numeral.lower()
+    return numeral + (_ROMAN_SUFFIX[chord.quality] if suffix else "")
 
 
 def out_of_key_fraction(tonic: int) -> np.ndarray:
@@ -489,9 +520,82 @@ def out_of_key_fraction(tonic: int) -> np.ndarray:
     pool = {(tonic + i) % 12 for i in (0, 2, 3, 4, 5, 7, 8, 9, 10, 11)}
     outside = np.array([[0.0 if pc in pool else 1.0 for pc in range(12)]])
     return (MASKS * outside).sum(axis=1) / MASKS.sum(axis=1)
+
+
+# ---------------------------------------------------------------------------
+# Lenses: named, independent creative knobs (each 0..1)
+# ---------------------------------------------------------------------------
+#
+# The novelty slider says "how far". Lenses say "in which direction". Each one
+# is a small, explainable bonus on a family of moves a musician would name,
+# so the user steers the search instead of accepting a black-box answer.
+
+LENSES = {
+    "borrowed": "chords from the parallel major/minor (iv, bVI, bVII, bIII ...)",
+    "secondary": "secondary dominants: a 7th chord a fifth above the next chord (V7/x)",
+    "tritone": "tritone substitutions: a 7th chord a semitone above the next chord",
+    "color": "7th-chord colour: maj7, m7, 7 instead of plain triads",
+    "passing": "passing diminished chords that resolve up a semitone",
+    "suspense": "sus4 chords that resolve to the same root",
+    "density": "harmonic rhythm: 0 = few changes, 0.5 = neutral, 1 = changes on most beats",
+}
+W_LENS = 1.0
+LENS_NOVELTY_FLOOR = 0.4  # a lens at 1.0 implies at least this much novelty
+
+
+def _lens_emission(palette: dict[str, float], tonic: int, mode: str) -> np.ndarray:
+    home, parallel = _scales(tonic, mode)
+    bonus = np.zeros(N_CAND)
+    for i, c in enumerate(CANDIDATES):
+        if c.tones <= parallel and not c.tones <= home:
+            bonus[i] += W_LENS * palette.get("borrowed", 0.0)
+        if c.quality in ("7", "maj7", "min7"):
+            # Diatonic sevenths (Imaj7, ii7, V7 ...) get the full colour bonus;
+            # chromatic ones (I7 in major) half, so colour doesn't turn into blues.
+            fit = 1.0 if c.tones <= home else 0.5
+            bonus[i] += 0.6 * fit * W_LENS * palette.get("color", 0.0)
+    return bonus
+
+
+def _lens_transition(palette: dict[str, float], tonic: int) -> np.ndarray:
+    """Bonus (not cost) for moving from a to b. Added unscaled by lambda."""
+    B = np.zeros((N_CAND, N_CAND))
+    sec, tri, pas, sus = (palette.get(k, 0.0) for k in ("secondary", "tritone", "passing", "suspense"))
+    if not (sec or tri or pas or sus):
+        return B
+    for i, a in enumerate(CANDIDATES):
+        for j, b in enumerate(CANDIDATES):
+            motion = (b.root - a.root) % 12
+            if a.quality == "7" and motion == 5 and b.root != tonic and b.quality != "dim":
+                B[i, j] += 1.2 * W_LENS * sec        # V7/x -> x  (V7 -> I is already cheap)
+            if a.quality == "7" and motion == 11 and b.quality != "dim":
+                B[i, j] += 2.0 * W_LENS * tri        # bII7 -> I, the tritone sub
+            if a.quality == "dim" and motion == 1:
+                B[i, j] += 2.0 * W_LENS * pas
+            if a.quality == "sus4" and motion == 0 and b.quality in ("maj", "7", "min"):
+                B[i, j] += 1.2 * W_LENS * sus
+    return B
+
+
+def _density_change_cost(density: float | None) -> float:
+    if density is None:
+        return CHANGE_COST
+    return CHANGE_COST * 4.0 ** (1.0 - 2.0 * float(np.clip(density, 0, 1)))  # 4x .. 0.25x
+
+
+# ---------------------------------------------------------------------------
+# Viterbi
+# ---------------------------------------------------------------------------
+
+W_NOVELTY = 1.0     # linear bonus for phase distance from the original chord
+W_TARGET = 8.0      # quadratic pull toward distance = novelty * D_TARGET_MAX
+D_TARGET_MAX = 0.5  # typical borrowed-chord distance (C->Fm 0.46, C->Ab 0.38, C->Eb 0.46)
+W_EXACT = 1.2       # pull toward the exact detected chord, fades out with novelty
+W_OUT_OF_KEY = 2.0  # per-fraction of chord tones outside the modal-interchange pool
 LAMBDA = 0.6        # base transition weight
 LAMBDA_AT_CHANGE = 0.6   # multiplier where the original changes chord
 LAMBDA_DOWNBEAT = 0.8    # multiplier on downbeats
+_LOCKED_OUT = -1e9
 
 
 @dataclass
@@ -500,10 +604,16 @@ class Reharmonization:
     score: float
     beat_len: float = 1.0
     changed_beats: list[int] = field(default_factory=list)
+    original: list[Chord | None] = field(default_factory=list)
+    key: tuple[int, str] = (0, "major")
 
     @property
     def symbols(self) -> list[str]:
         return [c.name if c else "N.C." for c in self.chords]
+
+    @property
+    def romans(self) -> list[str]:
+        return [roman(c, self.key[0]) for c in self.chords]
 
     def timeline(self) -> list[dict]:
         """Consecutive identical beats merged into timed chords."""
@@ -513,29 +623,104 @@ class Reharmonization:
             if out and out[-1]["symbol"] == sym:
                 out[-1]["end"] = (t + 1) * self.beat_len
             else:
-                out.append({"symbol": sym, "start": t * self.beat_len, "end": (t + 1) * self.beat_len})
+                out.append({
+                    "symbol": sym, "roman": roman(c, self.key[0]),
+                    "start": t * self.beat_len, "end": (t + 1) * self.beat_len,
+                })
         return out
+
+    def explain(self) -> list[dict]:
+        """Why each changed segment was chosen, in musician's terms."""
+        return explain_progression(self.chords, self.original, self.key, self.beat_len)
 
     def to_dict(self) -> dict:
         return {
             "chords": self.symbols,
+            "romans": self.romans,
             "timeline": self.timeline(),
             "score": round(self.score, 4),
             "changed_beats": self.changed_beats,
+            "explanations": self.explain(),
+            "key": {"tonic": NOTE_NAMES[self.key[0]], "mode": self.key[1]},
         }
 
 
-def _k_best_viterbi(E: np.ndarray, Tr: np.ndarray, lam: np.ndarray, k: int) -> list[tuple[float, list[int]]]:
+def explain_progression(
+    chords: Sequence[Chord | None],
+    original: Sequence[Chord | None],
+    key: tuple[int, str],
+    beat_len: float = 1.0,
+) -> list[dict]:
+    tonic, mode = key
+    home, parallel = _scales(tonic, mode)
+    other_mode = "minor" if mode == "major" else "major"
+
+    # Segments of consecutive identical chords.
+    segs: list[tuple[int, int, Chord | None]] = []
+    for t, c in enumerate(chords):
+        if segs and segs[-1][2] == c:
+            segs[-1] = (segs[-1][0], t + 1, c)
+        else:
+            segs.append((t, t + 1, c))
+
+    out = []
+    for si, (t0, t1, c) in enumerate(segs):
+        was = [o for o in original[t0:t1] if o is not None]
+        if c is None or not was or all(o == c for o in was):
+            continue
+        orig = max(set(was), key=was.count)
+        nxt = segs[si + 1][2] if si + 1 < len(segs) else None
+        tags: list[str] = []
+        motion = (nxt.root - c.root) % 12 if nxt else None
+
+        if c.quality == "7" and motion == 5 and nxt is not None:
+            if nxt.root == tonic:
+                tags.append("dominant: pulls home to the tonic")
+            else:
+                tags.append(f"secondary dominant: V7/{roman(nxt, tonic, suffix=False)}, tonicizes {nxt.name} for a moment")
+        if c.quality == "7" and motion == 11 and nxt is not None:
+            tags.append(f"tritone substitution: stands in for {NOTE_NAMES[(nxt.root + 7) % 12]}7, bass slides down a semitone")
+        if c.quality == "dim" and motion == 1 and nxt is not None:
+            tags.append(f"passing diminished: leans up a semitone into {nxt.name}")
+        if c.quality == "sus4":
+            tags.append("suspension: the 4th holds tension" + (" and resolves" if nxt and nxt.root == c.root else ""))
+        if c.tones <= parallel and not c.tones <= home:
+            tags.append(f"borrowed from {NOTE_NAMES[tonic]} {other_mode} (modal interchange)")
+        elif not c.tones <= home | parallel and not tags:
+            tags.append("chromatic colour outside the key")
+        if c.root == orig.root and c.quality != orig.quality:
+            if c.quality in ("7", "maj7", "min7") and orig.quality in ("maj", "min"):
+                tags.append(f"colour: {orig.name} with an added 7th")
+            elif {c.quality, orig.quality} == {"maj", "min"}:
+                tags.append(f"mode flip: {orig.name} becomes {c.name}")
+        shared = len(c.tones & orig.tones)
+        if shared >= 2 and c.root != orig.root:
+            tags.append(f"substitute: shares {shared} notes with {orig.name}, same job, new colour")
+        if not tags:
+            tags.append(f"re-voices the melody against {roman(c, tonic)}")
+
+        out.append({
+            "start": t0 * beat_len, "end": t1 * beat_len,
+            "from": orig.name, "to": c.name,
+            "roman": roman(c, tonic), "tags": tags,
+        })
+    return out
+
+
+def _k_best_viterbi(
+    E: np.ndarray, Tr: np.ndarray, lam: np.ndarray, k: int, bonus: np.ndarray | None = None
+) -> list[tuple[float, list[int]]]:
     T, S = E.shape
+    step = (lambda t: -lam[t] * Tr) if bonus is None else (lambda t: -lam[t] * Tr + bonus)
     score = np.full((T, S, k), -np.inf)
     bp_state = np.zeros((T, S, k), dtype=np.int32)
     bp_rank = np.zeros((T, S, k), dtype=np.int32)
     score[0, :, 0] = E[0]
     for t in range(1, T):
         # cand[p, s, j] = score of j-th best path ending in p, then moving to s
-        cand = score[t - 1][:, None, :] - lam[t] * Tr[:, :, None]  # (S, S, k)
+        cand = score[t - 1][:, None, :] + step(t)[:, :, None]  # (S, S, k)
         flat = cand.transpose(1, 0, 2).reshape(S, S * k)  # per destination s
-        top = np.argpartition(-flat, k - 1, axis=1)[:, :k] if S * k > k else np.tile(np.arange(k), (S, 1))
+        top = np.argpartition(-flat, k - 1, axis=1)[:, :k]
         vals = np.take_along_axis(flat, top, axis=1)
         order = np.argsort(-vals, axis=1)
         top = np.take_along_axis(top, order, axis=1)
@@ -548,7 +733,7 @@ def _k_best_viterbi(E: np.ndarray, Tr: np.ndarray, lam: np.ndarray, k: int) -> l
     idx = np.argsort(-final)[:k]
     paths = []
     for flat_i in idx:
-        if not np.isfinite(final[flat_i]):
+        if not np.isfinite(final[flat_i]) or final[flat_i] < _LOCKED_OUT / 2:
             continue
         s, j = divmod(int(flat_i), k)
         path = [s]
@@ -582,6 +767,8 @@ def reharmonize(
     chords: Sequence[Any],
     novelty: float = 0.0,
     *,
+    palette: dict[str, float] | None = None,
+    locks: dict[int, Any] | Iterable[int] | None = None,
     beat_len: float = 1.0,
     beats_per_bar: int = 4,
     key: tuple[int, str] | int | None = None,
@@ -591,13 +778,26 @@ def reharmonize(
     """Reharmonize `melody` starting from the detected `chords`.
 
     novelty: 0 keeps (close to) the detected progression; 1 pays the decoder to
-    move far away in Fourier phase space, which lands on borrowed chords and
-    modal interchange, while emission keeps melody notes as chord tones or
-    acceptable tensions.
+        move far away in Fourier phase space, toward borrowed chords and modal
+        interchange, while emission keeps melody notes as chord tones or
+        acceptable tensions.
+    palette: lens weights 0..1, see LENSES. Steers *which kind* of move. A
+        lens above 0 also lifts novelty to at least LENS_NOVELTY_FLOOR * lens.
+    locks: beats the user has decided on. Either {beat: chord} or a list of
+        beats to keep as detected. The search works around them.
 
-    Returns up to `n_paths` alternatives, best first.
+    Returns up to `n_paths` alternatives, best first, each with explanations.
     """
     novelty = float(np.clip(novelty, 0.0, 1.0))
+    palette = {k: float(np.clip(v, 0.0, 1.0)) for k, v in (palette or {}).items()}
+    unknown = set(palette) - set(LENSES)
+    if unknown:
+        raise ValueError(f"unknown lenses {sorted(unknown)}; choose from {sorted(LENSES)}")
+    # Turning a lens up is a request for change: give it room even if the
+    # novelty slider is at 0, otherwise the anchor silently wins.
+    lens_drive = max([v for k, v in palette.items() if k != "density"] + [0.0])
+    novelty = max(novelty, LENS_NOVELTY_FLOOR * lens_drive)
+
     notes = _parse_notes(melody)
     timeline = _parse_timeline(chords, beat_len)
     end = max([e for _, e, _ in timeline] + [n.end for n in notes] + [beat_len])
@@ -612,12 +812,15 @@ def reharmonize(
         for c in original:
             if c is not None:
                 prof += 0.5 * MASKS[c.index]
-        tonic = estimate_key(prof)[0]
+        tonic, mode = estimate_key(prof)
+    elif isinstance(key, tuple):
+        tonic, mode = int(key[0]) % 12, key[1]
     else:
-        tonic = key[0] if isinstance(key, tuple) else int(key)
+        tonic, mode = int(key) % 12, "major"
 
     E = _emission_matrix(notes, n_beats, beat_len)
     E -= W_OUT_OF_KEY * out_of_key_fraction(tonic)[None, :]
+    E += _lens_emission(palette, tonic, mode)[None, :]
 
     # Novelty: reward phase distance from the original chord at each beat.
     # The reward peaks at a target distance that grows with the slider, so
@@ -631,6 +834,20 @@ def reharmonize(
         E[t] -= W_TARGET * (d - target) ** 2                 # ...shaped around a target distance
         E[t, c.index] += (1.0 - novelty) * W_EXACT          # novelty 0 => the detected chord wins
 
+    # Locks: the human's decisions are hard constraints.
+    if locks is not None:
+        items = locks.items() if isinstance(locks, dict) else ((t, None) for t in locks)
+        for t, ch in items:
+            t = int(t)
+            if not 0 <= t < n_beats:
+                continue
+            ch = parse_chord(ch) if ch is not None else original[t]
+            if ch is None:
+                continue
+            keep = E[t, ch.index]
+            E[t, :] = _LOCKED_OUT
+            E[t, ch.index] = keep
+
     lam_t = np.full(n_beats, lam)
     for t in range(1, n_beats):
         if original[t] != original[t - 1]:
@@ -638,15 +855,16 @@ def reharmonize(
         if t % beats_per_bar == 0:
             lam_t[t] *= LAMBDA_DOWNBEAT
 
-    Tr = transition_matrix(tonic)
-    raw = _k_best_viterbi(E, Tr, lam_t, k=max(8 * n_paths, 24))
+    Tr = transition_matrix(tonic, _density_change_cost(palette.get("density")))
+    B = _lens_transition(palette, tonic)
+    raw = _k_best_viterbi(E, Tr, lam_t, k=max(8 * n_paths, 24), bonus=B if B.any() else None)
     picked = _pick_diverse(raw, n_paths, min_diff=max(1, round(0.1 * n_beats)))
 
     results = []
     for sc, path in picked:
         chs = [CANDIDATES[i] for i in path]
         changed = [t for t, (a, b) in enumerate(zip(chs, original)) if b is not None and a != b]
-        results.append(Reharmonization(chs, sc, beat_len, changed))
+        results.append(Reharmonization(chs, sc, beat_len, changed, original, (tonic, mode)))
     return results
 
 
@@ -685,10 +903,6 @@ def _parse_voice_profile(vp: dict) -> tuple[int, int, int, int]:
     strong_low = low if strong_low is None else min(max(strong_low, low), high)
     strong_high = high if strong_high is None else max(min(strong_high, high), strong_low)
     return low, high, strong_low, strong_high
-
-
-_MAJOR_SCALE = (0, 2, 4, 5, 7, 9, 11)
-_MINOR_SCALE = (0, 2, 3, 5, 7, 8, 10)
 
 
 def _snap(melody_pitch: int, tones: frozenset[int], above: bool, target: float, prev: int | None) -> int:
@@ -730,17 +944,110 @@ def _fit_range(p: int, melody_pitch: int, tones: frozenset[int], rng: tuple[int,
     return min(max(p, low), high)
 
 
-def harmony_parts(melody: Iterable[Any], chords: Sequence[Any], voice_profile: dict, *, beat_len: float = 1.0) -> dict:
-    """A third above and a sixth below the melody, bent to the harmony.
+# Styles beyond "parallel" are decoded as a whole line (Viterbi over in-range
+# chord-tone pitches), so each part is a singable melody of its own rather
+# than a note-by-note transposition.
+HARMONY_STYLES = {
+    "parallel": "a third above and a sixth below, bent to each chord (classic close harmony)",
+    "voice_led": "inner voices: hold common tones, move by step, like real backing singers",
+    "contrary": "parts move against the melody: it rises, they fall",
+    "pad": "sustained chord tones that only move when the harmony forces them to",
+}
+_STYLE_WEIGHTS = {
+    #             interval  motion  contrary
+    "voice_led": (0.6,      0.35,   0.0),
+    "contrary":  (0.25,     0.1,    1.5),
+    "pad":       (0.25,     1.2,    0.0),
+}
+W_COMFORT = 1.5        # per semitone outside [strongLow, strongHigh]
+W_WRONG_SIDE = 3.0     # upper part dipping below the melody (or lower part above it)
+W_PARALLEL_PERFECT = 0.8  # parallel unisons/fifths/octaves with the melody
 
-    Each part note is snapped to a chord tone of the chord sounding at the
-    note's onset, then fitted into the singer's range: above `strongHigh` it is
-    inverted down an octave, and it never leaves [low, high].
 
-    `chords` can be a Reharmonization, a per-beat list, or a timed list.
+def _line_viterbi(
+    notes: Sequence[Note], tones_per_note: Sequence[frozenset[int]], rng: tuple[int, int, int, int],
+    above: bool, target: float, weights: tuple[float, float, float],
+) -> list[int]:
+    low, high, strong_low, strong_high = rng
+    w_iv, w_motion, w_contrary = weights
+
+    cands: list[list[int]] = []
+    node: list[np.ndarray] = []
+    for n, tones in zip(notes, tones_per_note):
+        opts = [p for p in range(low, high + 1) if p % 12 in tones and p != n.pitch]
+        if not opts:
+            opts = [p for p in range(low, high + 1) if p != n.pitch] or [low]
+        cost = []
+        for p in opts:
+            iv = p - n.pitch if above else n.pitch - p
+            c = w_iv * abs(iv - target)
+            c += W_COMFORT * (max(0, p - strong_high) + max(0, strong_low - p))
+            c += W_WRONG_SIDE * (iv <= 0)
+            cost.append(c)
+        cands.append(opts)
+        node.append(np.array(cost))
+
+    acc = node[0].copy()
+    back: list[np.ndarray] = []
+    for i in range(1, len(notes)):
+        prev_p = np.array(cands[i - 1])[:, None]
+        cur_p = np.array(cands[i])[None, :]
+        dp = cur_p - prev_p
+        edge = w_motion * np.abs(dp)
+        dm = notes[i].pitch - notes[i - 1].pitch
+        if w_contrary and dm != 0:
+            same = np.sign(dp) == np.sign(dm)
+            edge = edge + w_contrary * same - 0.3 * w_contrary * (np.sign(dp) == -np.sign(dm))
+        # Parallel perfect intervals against the melody sound hollow.
+        iv_prev = np.abs(prev_p - notes[i - 1].pitch) % 12
+        iv_cur = np.abs(cur_p - notes[i].pitch) % 12
+        perfect = np.isin(iv_prev, (0, 7)) & np.isin(iv_cur, (0, 7)) & (dp != 0) & (dm != 0)
+        edge = edge + W_PARALLEL_PERFECT * perfect
+        total = acc[:, None] + edge
+        back.append(np.argmin(total, axis=0))
+        acc = total.min(axis=0) + node[i]
+
+    j = int(np.argmin(acc))
+    path = [j]
+    for b in reversed(back):
+        j = int(b[j])
+        path.append(j)
+    path.reverse()
+    return [cands[i][j] for i, j in enumerate(path)]
+
+
+def _merge_held(track: list[dict], chord_ids: list[Any]) -> list[dict]:
+    """Join contiguous repeats of the same pitch under the same chord (pad style)."""
+    out: list[dict] = []
+    last_chord = None
+    for note, cid in zip(track, chord_ids):
+        if (out and out[-1]["pitch"] == note["pitch"] and cid == last_chord
+                and abs(out[-1]["start"] + out[-1]["duration"] - note["start"]) < 1e-6):
+            out[-1]["duration"] = note["start"] + note["duration"] - out[-1]["start"]
+        else:
+            out.append(dict(note))
+        last_chord = cid
+    return out
+
+
+def harmony_parts(
+    melody: Iterable[Any], chords: Sequence[Any], voice_profile: dict, *,
+    style: str = "parallel", beat_len: float = 1.0,
+) -> dict:
+    """Two backing lines, a third above and a sixth below, bent to the harmony.
+
+    Each part note is a chord tone of the chord sounding at the note's onset
+    and never leaves [low, high]. In "parallel" style a note above
+    `strongHigh` is inverted down an octave; the line styles treat
+    strongLow/strongHigh as a comfort zone with a steep cost outside it.
+
+    `chords`: a Reharmonization, a per-beat list, or a timed list.
     `voice_profile`: {"low", "high", "strongLow"?, "strongHigh"?} as MIDI
     numbers or note names ("A2").
+    `style`: one of HARMONY_STYLES.
     """
+    if style not in HARMONY_STYLES:
+        raise ValueError(f"unknown style {style!r}; choose from {sorted(HARMONY_STYLES)}")
     if isinstance(chords, Reharmonization):
         beat_len = chords.beat_len
         chords = chords.chords
@@ -753,17 +1060,38 @@ def harmony_parts(melody: Iterable[Any], chords: Sequence[Any], voice_profile: d
     for n in notes:
         prof[n.pitch % 12] += n.dur
     tonic, mode = estimate_key(prof)
-    scale = frozenset((tonic + i) % 12 for i in (_MAJOR_SCALE if mode == "major" else _MINOR_SCALE))
+    scale = _scales(tonic, mode)[0]
 
-    upper: list[dict] = []
-    lower: list[dict] = []
-    prev_u = prev_l = None
-    for n in notes:
-        chord = _chord_at(timeline, n.start)
-        tones = chord.tones if chord is not None else scale
-        u = _fit_range(_snap(n.pitch, tones, True, 3.5, prev_u), n.pitch, tones, rng)
-        l = _fit_range(_snap(n.pitch, tones, False, 8.5, prev_l), n.pitch, tones, rng)
-        prev_u, prev_l = u, l
-        upper.append({"pitch": u, "start": n.start, "duration": n.dur})
-        lower.append({"pitch": l, "start": n.start, "duration": n.dur})
+    sounding = [_chord_at(timeline, n.start) for n in notes]
+    tones = [c.tones if c is not None else scale for c in sounding]
+
+    if style == "parallel":
+        ups, lows = [], []
+        prev_u = prev_l = None
+        for n, ts in zip(notes, tones):
+            prev_u = _fit_range(_snap(n.pitch, ts, True, 3.5, prev_u), n.pitch, ts, rng)
+            prev_l = _fit_range(_snap(n.pitch, ts, False, 8.5, prev_l), n.pitch, ts, rng)
+            ups.append(prev_u)
+            lows.append(prev_l)
+    else:
+        w = _STYLE_WEIGHTS[style]
+        ups = _line_viterbi(notes, tones, rng, True, 3.5, w) if notes else []
+        lows = _line_viterbi(notes, tones, rng, False, 8.5, w) if notes else []
+
+    def track(pitches):
+        return [{"pitch": p, "start": n.start, "duration": n.dur} for p, n in zip(pitches, notes)]
+
+    upper, lower = track(ups), track(lows)
+    if style == "pad":
+        ids = [c.name if c else None for c in sounding]
+        upper, lower = _merge_held(upper, ids), _merge_held(lower, ids)
     return {"third_above": upper, "sixth_below": lower}
+
+
+def harmony_variations(melody: Iterable[Any], chords: Sequence[Any], voice_profile: dict, **kw) -> dict:
+    """Every harmony style side by side, so the singer picks (or mixes) by ear."""
+    melody = list(melody)
+    return {
+        style: {"description": desc, **harmony_parts(melody, chords, voice_profile, style=style, **kw)}
+        for style, desc in HARMONY_STYLES.items()
+    }
