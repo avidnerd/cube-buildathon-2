@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>4-Track · Tape Brainstorm</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Nanum+Pen+Script&family=VT323&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ground:#36322D; --panel:#2B2824; --well:#1E1C19; --edge:#4A453E;
+  --key:#E9E4D6; --key-edge:#B9B2A2; --label:#EFE8D4; --ink:#2A2620;
+  --text:#F1ECE2; --muted:#B8B0A3;
+  --mint:#93F0CF; --mint-edge:#5FC2A0; --coral:#EE8A6E; --coral-edge:#C2664E;
+  --blue:#7BA4F0; --yellow:#F2C94C; --rec:#E0533F; --kraft:#B48B5E;
+  --vfd:#0F1A17; --glow:#8FE8C6;
+  --ui:"Barlow Condensed",system-ui,sans-serif; --hand:"Nanum Pen Script",cursive; --seg:"VT323",monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#ECECEA;color:#2A2620;font:16px/1.35 var(--ui)}
+::selection{background:var(--mint);color:var(--ink)}
+header.board{max-width:1320px;margin:0 auto;padding:40px 24px 8px}
+header.board h1{font-size:34px;font-weight:700}
+header.board p{max-width:72ch;color:#5B554C;font-size:17px;margin-top:6px}
+.grid{max-width:1320px;margin:0 auto;padding:16px 24px 64px;display:flex;flex-wrap:wrap;gap:28px 24px}
+figure{width:302px}
+figcaption{padding:0 2px 10px}
+figcaption b{display:block;font-size:19px}
+figcaption span{display:block;color:#5B554C;font-size:15px;line-height:1.3;min-height:58px}
+.ph{width:390px;height:844px;zoom:.774;background:var(--ground);color:var(--text);overflow:hidden;position:relative;padding:0 18px}
+@media (max-width:700px){figure{width:100%}.ph{zoom:.86;margin:0 auto}}
+.sb{height:44px;display:flex;justify-content:space-between;align-items:center;font-weight:600;font-size:16px;padding:0 6px}
+h2{font-size:34px;font-weight:700;line-height:1.05}
+.sub{color:var(--muted);font-size:17px;margin-top:2px}
+.hand{font-family:var(--hand);color:var(--ink);font-size:28px;line-height:1}
+.vfd{background:var(--vfd);border-radius:8px;box-shadow:inset 0 0 0 2px #000,0 0 0 2px var(--edge);padding:10px 14px;display:flex;justify-content:space-between}
+.vfd small{display:block;font-size:13px;color:#6FBFA2}
+.vfd b{font:400 30px/1 var(--seg);color:var(--glow);text-shadow:0 0 6px rgba(143,232,198,.55);font-weight:400}
+.key{background:var(--key);color:var(--ink);border-radius:6px;box-shadow:inset 0 -4px 0 var(--key-edge);font-weight:600;display:grid;place-items:center;text-align:center}
+.dark{background:#4A453E;color:var(--text);border-radius:6px;box-shadow:inset 0 -4px 0 #2E2A25;font-weight:600;display:grid;place-items:center}
+.btn{height:54px;border-radius:6px;font-size:21px;font-weight:600;display:grid;place-items:center}
+.mint{background:var(--mint);color:var(--ink);box-shadow:inset 0 -4px 0 var(--mint-edge)}
+.coral{background:var(--coral);color:var(--ink);box-shadow:inset 0 -4px 0 var(--coral-edge)}
+.panel{background:var(--panel);border-radius:10px;padding:14px}
+.lbl{color:var(--muted);font-size:15px;margin-bottom:8px}
+.tape{position:relative;background:#D9D3C3;border-radius:10px;padding:10px;box-shadow:inset 0 -3px 0 #B2AB9A}
+.tape .lab{background:var(--label);border-radius:4px;padding:6px 10px;display:flex;align-items:center;gap:8px}
+.tape .side{width:22px;height:22px;border-radius:50%;background:var(--ink);color:var(--label);font:700 13px/22px var(--ui);text-align:center;flex:none}
+.tape .win{margin-top:8px;background:#2A2620;border-radius:22px;height:54px;display:flex;align-items:center;justify-content:space-between;padding:0 14px}
+.reel{width:34px;height:34px;border-radius:50%;background:#6B4A33;display:grid;place-items:center}
+.reel i{width:18px;height:18px;border-radius:50%;background:var(--label);box-shadow:inset 0 0 0 5px #6B4A33}
+.reel.big{width:44px;height:44px}
+.win .band{flex:1;height:4px;background:#6B4A33;margin:0 8px}
+.foot{position:absolute;left:18px;right:18px;bottom:30px;display:grid;gap:10px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.chip{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:6px;background:#4A453E;font-weight:600;font-size:17px;margin:0 6px 6px 0}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+.sticker{background:var(--label);color:var(--ink);font-family:var(--hand);font-size:26px;line-height:1.05;padding:12px 14px;box-shadow:0 6px 14px rgba(0,0,0,.35);border-radius:2px}
+</style>
+</head>
+<body>
+<header class="board">
+  <h1>4-Track: tape brainstorm</h1>
+  <p>Six app moments the spec needs that aren't designed yet, in the warm tape style you pasted: charcoal deck, cream masking-tape labels, marker handwriting, a green-glow display, mint for go and coral for picked. Each takes one cassette-culture idea and gives it a real job. All songs, names, and scores are sample data.</p>
+</header>
+<main class="grid">
+
+<!-- 1 Library -->
+<figure>
+<figcaption><b>1 · The shoebox</b><span>Your projects as a stack of tape spines with handwritten titles. Dots show which of the four parts are filled. The newest tape is pulled half out.</span></figcaption>
+<div class="ph">
+  <div class="sb"><span>9:41</span><span>●●● ▮</span></div>
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;margin:6px 0 14px"><div><h2>Your tapes</h2><p class="sub">6 tapes · 2 shared with you</p></div><div class="btn mint" style="height:44px;padding:0 16px;font-size:19px">+ New tape</div></div>
+  <div class="vfd" style="margin-bottom:16px"><div><small>Tapes</small><b>06</b></div><div><small>Waiting on you</small><b>1</b></div><div><small>Group</small><b>4 of 4</b></div></div>
+  <div style="display:grid;gap:8px">
+    <div style="margin:0 -6px 0 12px">
+      <div class="tape" style="padding:8px"><div class="lab"><span class="side">A</span><span class="hand">Lanterns, take 3</span><span style="margin-left:auto;display:flex;gap:4px"><i class="dot" style="background:var(--blue)"></i><i class="dot" style="background:var(--coral)"></i><i class="dot" style="background:var(--yellow)"></i><i class="dot" style="background:#5A544B"></i></span></div>
+      <div class="win" style="height:44px"><span class="reel"><i></i></span><span class="band"></span><span style="font-size:14px;color:var(--label)">Needs a bass part</span><span class="band"></span><span class="reel"><i></i></span></div></div>
+    </div>
+    <div class="spine" style="display:flex;align-items:center;gap:10px;height:52px;background:#D9D3C3;border-radius:6px;padding:0 8px;box-shadow:inset 0 -3px 0 #B2AB9A"><span style="width:8px;align-self:stretch;background:var(--coral);margin:8px 0;border-radius:2px"></span><span class="hand" style="font-size:27px">Down to the River</span><span style="margin-left:auto;color:#6B6458;font-size:15px">Nov 6</span></div>
+    <div class="spine" style="display:flex;align-items:center;gap:10px;height:52px;background:#CFE0D8;border-radius:6px;padding:0 8px;box-shadow:inset 0 -3px 0 #A8BDB3"><span style="width:8px;align-self:stretch;background:var(--mint-edge);margin:8px 0;border-radius:2px"></span><span class="hand" style="font-size:27px">Blue Hour (demo)</span><span style="margin-left:auto;color:#5E6E67;font-size:15px">From Jo · new</span></div>
+    <div class="spine" style="display:flex;align-items:center;gap:10px;height:52px;background:#D9D3C3;border-radius:6px;padding:0 8px;box-shadow:inset 0 -3px 0 #B2AB9A"><span style="width:8px;align-self:stretch;background:var(--yellow);margin:8px 0;border-radius:2px"></span><span class="hand" style="font-size:27px">Winter set opener</span><span style="margin-left:auto;color:#6B6458;font-size:15px">Oct 30</span></div>
+    <div class="spine" style="display:flex;align-items:center;gap:10px;height:52px;background:#E3D9E8;border-radius:6px;padding:0 8px;box-shadow:inset 0 -3px 0 #BFB2C6"><span style="width:8px;align-self:stretch;background:var(--blue);margin:8px 0;border-radius:2px"></span><span class="hand" style="font-size:27px">Warmups</span><span style="margin-left:auto;color:#6B6458;font-size:15px">Oct 12</span></div>
+  </div>
+</div>
+</figure>
+
+<!-- 2 Record -->
+<figure>
+<figcaption><b>2 · Rec arm</b><span>Recording with the count-in on the deck's glowing display, four beat lights for the metronome, and earlier takes kept as masking-tape tags.</span></figcaption>
+<div class="ph">
+  <div class="sb"><span>9:41</span><span>●●● ▮</span></div>
+  <div class="vfd" style="margin-top:6px;align-items:center"><div><small>Count-in</small><b style="font-size:84px;line-height:.8">3</b></div><div style="text-align:right"><small>Tempo</small><b>92 BPM</b><small style="margin-top:6px">Time</small><b>4/4</b></div></div>
+  <div style="display:flex;gap:10px;justify-content:center;margin:14px 0">
+    <i class="dot" style="width:26px;height:26px;background:#5A544B"></i><i class="dot" style="width:26px;height:26px;background:var(--rec);box-shadow:0 0 10px var(--rec)"></i><i class="dot" style="width:26px;height:26px;background:#5A544B"></i><i class="dot" style="width:26px;height:26px;background:#5A544B"></i>
+  </div>
+  <div class="tape"><div class="lab"><span class="side">A</span><span class="hand">Lanterns, take 4</span></div><div class="win"><span class="reel big"><i></i></span><span class="band"></span><span class="reel big"><i></i></span></div></div>
+  <div style="display:grid;grid-template-columns:60px 1fr 60px;gap:10px;margin-top:14px;align-items:center">
+    <div class="key btn" style="font-size:26px">−</div><div style="text-align:center"><div class="lbl" style="margin:0">Tempo</div><div style="font-size:30px;font-weight:700">92</div></div><div class="key btn" style="font-size:26px">+</div>
+  </div>
+  <div class="lbl" style="margin-top:18px">Takes</div>
+  <div><span class="sticker" style="display:inline-block;font-size:22px;padding:6px 10px;transform:rotate(-2deg);margin:0 6px 8px 0">take 1 ✗</span><span class="sticker" style="display:inline-block;font-size:22px;padding:6px 10px;transform:rotate(1deg);margin:0 6px 8px 0">take 2</span><span class="sticker" style="display:inline-block;font-size:22px;padding:6px 10px;transform:rotate(-1deg);background:#F6D9CF">take 3 ★ keeper</span></div>
+  <div class="foot"><div class="row2"><div class="dark btn">Stop</div><div class="btn" style="background:var(--rec);color:#fff;box-shadow:inset 0 -4px 0 #A8382A">● Recording</div></div></div>
+</div>
+</figure>
+
+<!-- 3 Range -->
+<figure>
+<figcaption><b>3 · Label your range</b><span>The range check: slide from your lowest to your highest note, and the app prints your range on an embossed label-maker strip, then sticks it on your track.</span></figcaption>
+<div class="ph">
+  <div class="sb"><span>9:41</span><span>●●● ▮</span></div>
+  <h2 style="margin-top:6px">Sing low to high</h2>
+  <p class="sub">Slide from your lowest comfortable note to your highest. Headphones not needed.</p>
+  <div class="panel" style="margin-top:16px">
+    <div class="lbl">Your voice, live</div>
+    <div style="position:relative;display:flex;height:110px;border-radius:6px;overflow:hidden">
+      <div style="position:absolute;left:21%;width:52%;top:0;bottom:0;background:rgba(147,240,207,.28);border-left:3px solid var(--mint);border-right:3px solid var(--mint);z-index:1"></div>
+      <div style="position:absolute;left:66%;top:-2px;width:14px;height:14px;border-radius:50%;background:var(--mint);box-shadow:0 0 10px var(--mint);z-index:2"></div>
+      <div style="display:flex;width:100%;background:linear-gradient(90deg,#F1ECE2 0 100%)">
+      <!-- 15 white keys -->
+      <script>document.write(Array.from({length:15},(_,i)=>`<span style="flex:1;border-right:1px solid #BDB6A8;position:relative">${[0,1,3,4,5,7,8,10,11,12].includes(i)?'<i style="position:absolute;right:-6px;top:0;width:11px;height:62px;background:#2A2620;z-index:1;border-radius:0 0 2px 2px"></i>':''}</span>`).join(''))</script>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;color:var(--muted);font-size:14px;margin-top:6px"><span>C3</span><span>C4</span><span>C5</span></div>
+  </div>
+  <div style="margin:26px 0 0 10px;display:inline-block;transform:rotate(-3deg);background:#1A1A1A;border-radius:3px;padding:10px 18px;box-shadow:0 6px 14px rgba(0,0,0,.4)">
+    <span style="font:700 34px/1 var(--ui);letter-spacing:.14em;color:#F4F4F0;text-shadow:0 1px 0 #000,0 -1px 0 #555">MAYA · G3–D5</span>
+  </div>
+  <div class="lbl" style="margin-top:24px">Parts that fit you</div>
+  <div><span class="chip"><i class="dot" style="background:var(--coral)"></i>Alto ✓</span><span class="chip"><i class="dot" style="background:var(--yellow)"></i>Tenor ✓</span><span class="chip" style="opacity:.6"><i class="dot" style="background:var(--blue)"></i>Melody · too high</span></div>
+  <div class="foot"><div class="btn mint">Stick it on track 2</div><div class="dark btn">Sing it again</div></div>
+</div>
+</figure>
+
+<!-- 4 Practice -->
+<figure>
+<figcaption><b>4 · Pick your tape</b><span>Pitch practice. The tolerance levels are cassette tape types: Normal ±50¢, Chrome ±25¢, Metal ±10¢. Target bars scroll past a fixed playhead, and your sung line turns green, yellow, or red.</span></figcaption>
+<div class="ph">
+  <div class="sb"><span>9:41</span><span>●●● ▮</span></div>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px"><h2>Practice: alto</h2><span class="chip" style="background:rgba(147,240,207,.18);color:var(--mint);margin:0"><i class="dot" style="background:var(--mint)"></i>Headphones in</span></div>
+  <div class="lbl" style="margin-top:14px">Tape type</div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+    <div class="key" style="padding:10px 4px;height:76px"><span style="font-size:13px;color:#6B6458">TYPE I</span><b style="font-size:20px">Normal</b><span style="font-size:14px">±50¢</span></div>
+    <div class="coral" style="border-radius:6px;padding:10px 4px;height:76px;display:grid;place-items:center;text-align:center"><span style="font-size:13px">TYPE II</span><b style="font-size:20px">Chrome</b><span style="font-size:14px">±25¢</span></div>
+    <div class="key" style="padding:10px 4px;height:76px"><span style="font-size:13px;color:#6B6458">TYPE IV</span><b style="font-size:20px">Metal</b><span style="font-size:14px">±10¢</span></div>
+  </div>
+  <div style="position:relative;height:250px;margin-top:16px;background:var(--well);border-radius:10px;overflow:hidden">
+    <div style="position:absolute;left:0;right:0;top:0;bottom:0;background:repeating-linear-gradient(180deg,transparent 0 30px,#2A2723 30px 31px)"></div>
+    <div style="position:absolute;left:10px;top:150px;width:90px;height:16px;border-radius:4px;background:#5A544B"></div>
+    <div style="position:absolute;left:104px;top:90px;width:60px;height:16px;border-radius:4px;background:#5A544B"></div>
+    <div style="position:absolute;left:168px;top:60px;width:110px;height:16px;border-radius:4px;background:#6B655B"></div>
+    <div style="position:absolute;left:282px;top:120px;width:90px;height:16px;border-radius:4px;background:#5A544B"></div>
+    <svg width="354" height="250" style="position:absolute;left:0;top:0" fill="none" stroke-width="4" stroke-linecap="round">
+      <path d="M10 160 C40 158 70 162 98 157" stroke="#7FE3A8"/>
+      <path d="M98 157 C104 120 108 100 120 98 C140 97 150 99 160 98" stroke="#F2C94C"/>
+      <path d="M160 98 C166 80 172 70 186 69 C200 68 210 71 222 72" stroke="#7FE3A8"/>
+    </svg>
+    <div style="position:absolute;left:222px;top:0;bottom:0;width:3px;background:var(--text)"></div>
+    <div style="position:absolute;left:216px;top:64px;width:15px;height:15px;border-radius:50%;background:#7FE3A8;box-shadow:0 0 10px #7FE3A8"></div>
+  </div>
+  <div class="vfd" style="margin-top:12px"><div><small>You</small><b>+8¢</b></div><div><small>Loop</small><b>BAR 5–6</b></div><div><small>Speed</small><b>75%</b></div></div>
+  <div class="foot"><div class="btn mint">Start take</div></div>
+</div>
+</figure>
+
+<!-- 5 Review -->
+<figure>
+<figcaption><b>5 · The J-card</b><span>After a take, your habits come back as notes written on the cassette's fold-out card: flat on long notes, sharp up high, drifting over the take. Each note has a fix button.</span></figcaption>
+<div class="ph">
+  <div class="sb"><span>9:41</span><span>●●● ▮</span></div>
+  <h2 style="margin-top:6px">Take 3</h2>
+  <p class="sub">Lanterns · alto · Chrome (±25¢)</p>
+  <div class="vfd" style="margin-top:14px"><div><small>On pitch</small><b style="font-size:44px">82%</b></div><div><small>Last take</small><b>74%</b></div><div><small>Best</small><b>82%</b></div></div>
+  <div style="margin-top:18px;display:grid;grid-template-columns:34px 1fr;background:var(--label);border-radius:4px;box-shadow:0 8px 18px rgba(0,0,0,.35);min-height:300px">
+    <div style="background:#D4CCB6;border-right:1px dashed #A79F8B;writing-mode:vertical-rl;transform:rotate(180deg);font:600 15px var(--ui);color:#6B6458;text-align:center;letter-spacing:.1em">LANTERNS · TAKE 3</div>
+    <div style="padding:14px 16px;color:var(--ink)">
+      <p class="hand" style="font-size:30px">Flat on long notes</p>
+      <p style="font-size:15px;color:#6B6458;margin:2px 0 8px">bars 3 and 7, about 20¢ under</p>
+      <span class="chip" style="background:var(--ink);color:var(--label);height:30px">Loop bar 7 slower</span>
+      <p class="hand" style="font-size:30px;margin-top:12px">Sharp above C5</p>
+      <p style="font-size:15px;color:#6B6458;margin:2px 0 8px">the leap in bar 6</p>
+      <span class="chip" style="background:var(--ink);color:var(--label);height:30px">Drill the leap</span>
+      <p class="hand" style="font-size:30px;margin-top:12px">Drifted flat by the end</p>
+      <svg width="250" height="40" viewBox="0 0 250 40" fill="none" style="margin-top:4px"><path d="M0 12 H250" stroke="#A79F8B" stroke-dasharray="4 4"/><path d="M0 12 C40 10 80 14 120 18 C160 22 200 26 250 31" stroke="#C2664E" stroke-width="3"/></svg>
+    </div>
+  </div>
+  <div class="foot"><div class="row2"><div class="dark btn">Hear the take</div><div class="btn mint">Try again</div></div></div>
+</div>
+</figure>
+
+<!-- 6 Riff -->
+<figure>
+<figcaption><b>6 · Half-speed dub</b><span>Learn-this-riff mode. Like dubbing a tape at half speed, you copy the run at 50%, then unlock 75% and 100%. Each note in the run gets its own score square.</span></figcaption>
+<div class="ph">
+  <div class="sb"><span>9:41</span><span>●●● ▮</span></div>
+  <h2 style="margin-top:6px">Learn this riff</h2>
+  <p class="sub">Run into bar 8 · R&amp;B · medium</p>
+  <div class="tape" style="margin-top:16px"><div class="lab"><span class="side">B</span><span class="hand">run into "home"</span></div>
+    <div style="margin-top:8px;background:#2A2620;border-radius:8px;height:96px;position:relative">
+      <script>document.write([[16,18],[52,30],[88,42],[124,30],[160,54],[196,66],[232,54],[268,78]].map(([x,y],i)=>`<span style="position:absolute;left:${x}px;top:${y-8}px;width:30px;height:12px;border-radius:3px;background:${i<5?'var(--mint)':i==5?'var(--yellow)':'#6B655B'}"></span>`).join(''))</script>
+    </div></div>
+  <div class="lbl" style="margin-top:18px">Note by note</div>
+  <div style="display:grid;grid-template-columns:repeat(8,1fr);gap:6px">
+    <script>document.write(['#7FE3A8','#7FE3A8','#7FE3A8','#F2C94C','#7FE3A8','#E0533F','#5A544B','#5A544B'].map(c=>`<span style="height:34px;border-radius:4px;background:${c}"></span>`).join(''))</script>
+  </div>
+  <div class="lbl" style="margin-top:20px">Dubbing speed</div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+    <div class="key btn" style="height:70px;font-size:24px">50%<span style="font-size:14px;margin-top:-10px">passed ✓</span></div>
+    <div class="coral btn" style="height:70px;font-size:24px;border-radius:6px">75%<span style="font-size:14px;margin-top:-10px">now</span></div>
+    <div class="dark btn" style="height:70px;font-size:24px;opacity:.55">100%<span style="font-size:14px;margin-top:-10px">locked</span></div>
+  </div>
+  <div class="sticker" style="margin-top:20px;transform:rotate(-1.5deg);font-size:24px">Tip from Maya: breathe before bar 7, the run needs it all.</div>
+  <div class="foot"><div class="row2"><div class="dark btn">Play riff</div><div class="btn mint">Sing it</div></div></div>
+</div>
+</figure>
+
+</main>
+</body>
+</html>
