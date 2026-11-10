@@ -1,0 +1,8 @@
+numpy>=2.0
+# Listening models (voice separation, lyrics). Torch must match torchaudio.
+torch==2.8.0
+torchaudio==2.8.0
+demucs==4.1.0
+transformers>=4.56
+# dev
+pytest>=8

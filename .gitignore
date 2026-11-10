@@ -1,11 +1,4 @@
-# JavaScript app (sheet music / Basic Pitch)
-node_modules/
-dist/
-.DS_Store
-*.local
-public/models/basic-pitch/
-
-# Python counter-melody generator
-.venv/
 __pycache__/
+*.pyc
 .pytest_cache/
+listen/
