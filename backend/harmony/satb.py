@@ -2,10 +2,10 @@
 
     plan_satb(melody, chord_at, key, melody_voice="soprano") -> {soprano, alto, tenor, bass}
 
-One voice carries the melody, moved into that voice's octave. The bass is
-chosen first (chord roots, moving sensibly), then the two remaining voices are
-chosen *together*, note by note over the whole line (Viterbi over pairs), with
-the classic four-part rules as costs:
+One voice carries the melody, moved into that voice's octave. The bass and the
+two remaining voices are chosen *together* over the whole line (an exact
+Viterbi over every ordered voicing), so the result is the true minimum of
+the classic four-part rules written as costs:
 
   hard    voices in S >= A >= T >= B order (no crossing), each in its range
   chord   root and third present, fifth preferably; don't double the third
@@ -64,10 +64,10 @@ def _chord_roles(ch: Chord) -> dict[int, str]:
     return roles
 
 
-def _plan_bass(melody, chords, upper_limit: Sequence[int], tune: Sequence[int] | None = None) -> list[int]:
+def _bass_options(melody, chords, upper_limit: Sequence[int], tune: Sequence[int]) -> tuple[list[np.ndarray], list[np.ndarray]]:
+    """Per note: bass candidates (chord tones under the melody) and their cost."""
     lo, hi = RANGES["bass"]
     n = len(melody)
-    tune = upper_limit if tune is None else tune
     cands, node = [], []
     for i, (m, ch) in enumerate(zip(melody, chords)):
         roles = _chord_roles(ch)
@@ -84,19 +84,21 @@ def _plan_bass(melody, chords, upper_limit: Sequence[int], tune: Sequence[int] |
             cost.append(c + 0.04 * abs(p - 48))           # sit low, around C3
         cands.append(opts)
         node.append(np.array(cost))
-    acc = node[0].copy()
-    back = []
-    for i in range(1, n):
-        d = np.abs(cands[i][None, :] - cands[i - 1][:, None])
-        tot = acc[:, None] + 0.1 * d + 1.0 * (d > 7)
-        back.append(tot.argmin(axis=0))
-        acc = tot.min(axis=0) + node[i]
-    j = int(acc.argmin())
-    path = [j]
-    for b in reversed(back):
-        j = int(b[j])
-        path.append(j)
-    path.reverse()
+    return cands, node
+
+
+def _bass_edge(d: np.ndarray) -> np.ndarray:
+    d = np.abs(d)
+    return 0.1 * d + 1.0 * (d > 7)
+
+
+def _plan_bass(melody, chords, upper_limit: Sequence[int], tune: Sequence[int] | None = None) -> list[int]:
+    """The bass alone (exact Viterbi over its own cost)."""
+    from backend.harmony.optimal import chain
+
+    tune = upper_limit if tune is None else tune
+    cands, node = _bass_options(melody, chords, upper_limit, tune)
+    path, _ = chain(node, lambda i: _bass_edge(cands[i][None, :] - cands[i - 1][:, None]))
     return [int(cands[i][j]) for i, j in enumerate(path)]
 
 
@@ -114,7 +116,9 @@ def plan_satb(melody: Sequence[dict], chord_at: Callable[[float], Chord | None],
     shift = melody_octave_shift(melody, melody_voice)
     tune = [int(n["pitch"]) + shift for n in melody]
     chords = [chord_at(0.5 * (n["t0"] + n["t1"])) or home for n in melody]
-    bass = _plan_bass(melody, chords, tune, tune)
+    # All three free voices (the bass too) are chosen together: the result is the
+    # exact minimum of the whole four-part cost, not a bass fixed first.
+    bass_c, bass_node = _bass_options(melody, chords, tune, tune)
 
     mi = VOICES.index(melody_voice)
     free = [i for i in range(3) if i != mi]         # the two voices to choose (bass is index 3)
@@ -128,20 +132,24 @@ def plan_satb(melody: Sequence[dict], chord_at: Callable[[float], Chord | None],
         for v in free:
             lo, hi = RANGES[VOICES[v]]
             lists.append([p for p in range(lo, hi + 1) if p % 12 in roles or p % 12 in in_key])
-        rows = []
-        for x in lists[0]:
-            for y in lists[1]:
-                row = [0, 0, 0, bass[k]]
-                row[mi], row[free[0]], row[free[1]] = m, x, y
-                if row[0] >= row[1] >= row[2] >= row[3]:
-                    rows.append(row)
+        rows, bcost = [], []
+        for bq, bp in enumerate(bass_c[k]):
+            for x in lists[0]:
+                for y in lists[1]:
+                    row = [0, 0, 0, int(bp)]
+                    row[mi], row[free[0]], row[free[1]] = m, x, y
+                    if row[0] >= row[1] >= row[2] >= row[3]:
+                        rows.append(row)
+                        bcost.append(bass_node[k][bq])
         if not rows:   # very wide or very narrow spots: relax to the closest ordered voicing
-            base = max(bass[k] + 1, m - 7)
-            row = [0, 0, 0, bass[k]]
+            bq = int(np.argmin(bass_node[k]))
+            b = int(bass_c[k][bq])
+            base = max(b + 1, m - 7)
+            row = [0, 0, 0, b]
             row[mi], row[free[0]], row[free[1]] = m, max(m, base) if free[0] < mi else min(m, base), base
-            rows = [sorted(row, reverse=True)]
+            rows, bcost = [sorted(row, reverse=True)], [bass_node[k][bq]]
         V = np.array(rows, dtype=int)
-        cost = np.zeros(len(V))
+        cost = np.array(bcost, dtype=float)
         pcs = V % 12
         for i, row in enumerate(pcs):
             present = [roles.get(int(p)) for p in row]
@@ -181,6 +189,7 @@ def plan_satb(melody: Sequence[dict], chord_at: Callable[[float], Chord | None],
             edge += scale_ * (W_MOTION * ad + W_LEAP * (ad > 5))
             if moved_melody:
                 edge += scale_ * W_STATIC * (ad == 0)
+        edge += _bass_edge(d[:, :, 3])
         for a, b in pairs:
             same_way = (np.sign(d[:, :, a]) == np.sign(d[:, :, b])) & (d[:, :, a] != 0)
             before = np.abs(P[:, :, a] - P[:, :, b]) % 12

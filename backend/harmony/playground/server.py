@@ -36,6 +36,7 @@ from backend.harmony.beats import BeatGrid, resample, track_beats
 from backend.harmony.chords import detect_chords
 from backend.harmony.dissonance import Listener, chord_scene
 from backend.harmony.harmonizer import ARRANGEMENTS, plan_parts, render_part
+from backend.harmony.textures import TEXTURES, beat_seconds, describe, follow_singer, place, plan_textures
 from backend.harmony.lyrics import (
     attach_lyrics,
     hear_words,
@@ -288,6 +289,14 @@ def _studio_payload(paths, names, melody, beats, voice: dict, job_id: str | None
     rng = _parse_voice_profile(voice)
     timed = [n for n in melody if "t0" in n and "t1" in n]
     listener, f0 = _listener(job_id)
+    tuning = float(((_jobs.get(job_id or "") or {}).get("result") or {}).get("tuning_cents") or 0.0)
+    # What was really sung, on the transcription's grid (for parts played as tones).
+    heard = {}
+    for i, n in enumerate(timed):
+        hz = _lead_hz(f0, n)
+        if hz:
+            heard[i] = 69 + 12 * np.log2(hz / 440.0) - tuning / 100.0
+    sung = [{**n, "heard": heard[i]} if i in heard else n for i, n in enumerate(timed)]
     personal = _song_personal(timed)
     out = []
     for p, name in zip(paths, names):
@@ -327,6 +336,12 @@ def _studio_payload(paths, names, melody, beats, voice: dict, job_id: str | None
                 seg["voicing"] = _voicing(seg["symbol"])
             p = Reharmonization(chords, p.score, p.beat_len, [], p.original, p.key)
         d["tension"] = round(progression_tension(p.chords, *p.key), 3)
+        # Rounds, canons, echoes and riffs: other shapes for the same tune.
+        d["textures"] = plan_textures(sung, chord_at, p.key, rng, beats, every or 4, phase)
+        for parts in d["textures"].values():
+            for pid, part in parts.items():
+                if any(n.get("synth") for n in part):
+                    parts[pid] = follow_singer(part, sung, tuning)
         out.append(d)
     return out
 
@@ -409,9 +424,16 @@ def api_options(req: dict) -> dict:
         d["name"] = name
     arrangements = {k: {"label": v["label"], "parts": [{"id": pid, "label": lbl} for pid, lbl, _, _ in v["parts"]]}
                     for k, v in ARRANGEMENTS.items()}
+    textures = {}
+    if payload:
+        spb = beat_seconds(timed or melody, req.get("beats"))
+        for k, parts in payload[0]["textures"].items():
+            textures[k] = {"label": TEXTURES[k]["label"], "desc": describe(k, parts, payload[0]["key"], spb, every or 4),
+                           "parts": [{"id": pid, "label": lbl} for pid, lbl in TEXTURES[k]["parts"]
+                                     if any(not n.get("rest") for n in parts[pid])]}
     from backend.harmony import neural
 
-    return {"base": base_symbols, "paths": payload, "arrangements": arrangements,
+    return {"base": base_symbols, "paths": payload, "arrangements": arrangements, "textures": textures,
             "song": neural.song_fingerprint([n for n in melody if "t0" in n])}
 
 
@@ -426,7 +448,9 @@ def api_render(req: dict) -> bytes:
     melody, part = req["melody"], req["part"]
     if len(melody) != len(part):
         raise ValueError("melody and part must have the same notes")
-    key = (req["job"], tuple((round(m["t0"], 3), m["pitch"], h["pitch"]) for m, h in zip(melody, part)))
+    if any(h.get("synth") for h in part):
+        raise ValueError("this part is played as tones, not sung")
+    key = (req["job"], tuple((round(m["t0"], 3), m["pitch"], h["pitch"], h.get("delay"), h.get("rest")) for m, h in zip(melody, part)))
     if key not in _render_cache:
         from backend.harmony.audio_fx import denoise, polish
 
@@ -436,6 +460,7 @@ def api_render(req: dict) -> bytes:
         times, hz = job["f0"]
         tuning = (job.get("result") or {}).get("tuning_cents", 0.0)
         y = polish(render_part(job["vocals_clean"], sr, times, hz, melody, part, tuning_cents=tuning), sr)
+        y = place(y, sr, melody, part)    # rounds, canons and echoes sing later than the lead
         if len(_render_cache) > 64:
             _render_cache.clear()
         _render_cache[key] = wav_bytes(y.astype(np.float32), sr)
