@@ -10,6 +10,8 @@ import { ShareSheet } from '../ui/ShareSheet.jsx';
 import { MuteSolo, useLiveGains } from './Arrange.jsx';
 
 export const roleLabel = t => (t.role === 'melody' ? 'Melody' : t.role === 'counter' ? `${capitalize(t.voice)} counter` : 'Harmony');
+/** The line under a part's name, unless it would just repeat the name. */
+export const subLabel = t => { const s = t.assignedTo || roleLabel(t); return t.name.startsWith(s) ? null : s; };
 
 export function PartsScreen({ project, setProject, playback, mix, setMix, showToast, go, totalBeats }) {
   const [score, setScore] = useState(false);
@@ -23,7 +25,7 @@ export function PartsScreen({ project, setProject, playback, mix, setMix, showTo
   if (!tracks.length) return <>
     <Header/>
     <div className="scroll"><Top title={project.title} meta="No parts yet"/>
-      <div className="blank"><b>No parts to learn yet</b><p className="meta">Record a melody first, then add parts in Arrange.</p></div></div>
+      <div className="blank"><b>No parts to learn yet</b><p className="meta">Record a melody first.</p></div></div>
     <button className="cta" onClick={() => go('record')}><i className="dot"/>GO TO RECORD</button>
   </>;
 
@@ -58,14 +60,13 @@ export function PartsScreen({ project, setProject, playback, mix, setMix, showTo
       <div className="who">{tracks.map((t, i) => <button key={t.id} aria-pressed={mix.singing === t.id}
         style={mix.singing === t.id ? { background: TRACK_COLORS[i] } : undefined}
         onClick={() => setMix(m => ({ ...m, singing: m.singing === t.id ? null : t.id }))}>
-        <i style={{ background: TRACK_COLORS[i] }}/><span><b>{t.name}</b><small>{t.assignedTo || roleLabel(t)}</small></span></button>)}
+        <i style={{ background: TRACK_COLORS[i] }}/><span><b>{t.name}</b>{subLabel(t) && <small>{subLabel(t)}</small>}</span></button>)}
       </div>
       <p className="label" style={{ paddingTop: 14 }}>Mix</p>
       <div className="seg" role="group" aria-label="Learning mix">
         {[['solo', 'Solo'], ['pred', 'Predominant'], ['miss', 'Missing']].map(([id, label]) =>
           <button key={id} aria-pressed={mix.mode === id} disabled={!singing} onClick={() => setMix(m => ({ ...m, mode: id }))}>{label}</button>)}
       </div>
-      {!singing && <p className="saved">Pick the part you sing to use a learning mix.</p>}
       <div className="mixer">{tracks.map((t, i) => {
         const value = mix.volume[t.id] ?? 0.8;
         return <div key={t.id} className={`ch${gains[t.id] < value - 1e-6 ? ' dim' : ''}`}>
@@ -76,9 +77,8 @@ export function PartsScreen({ project, setProject, playback, mix, setMix, showTo
           <MuteSolo id={t.id} name={t.name} mix={mix} setMix={setMix}/>
         </div>;
       })}</div>
-      <p className="saved">Your mix is saved on this device only. Others hear their own.</p>
       {!project.shared && <div className="share">
-        <div><b>Share the tape</b><p className="meta">Friends get a link to pick a part and sing.</p></div>
+        <div><b>Share the tape</b></div>
         <button className="chip" style={{ marginLeft: 'auto' }} onClick={() => setSharing(true)}>Share</button>
       </div>}
     </div>

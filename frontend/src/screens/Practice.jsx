@@ -6,7 +6,7 @@ import { mixGains } from '../mix.js';
 import { playbackOptions } from '../playbackSources.js';
 import { Header, PianoRoll, Top } from '../ui/kit.jsx';
 import { useLiveGains } from './Arrange.jsx';
-import { roleLabel } from './Parts.jsx';
+import { subLabel } from './Parts.jsx';
 
 export function PracticeScreen({ project, playback, mix, setMix, go, totalBeats }) {
   const [speed, setSpeed] = useState(1);
@@ -36,7 +36,7 @@ export function PracticeScreen({ project, playback, mix, setMix, go, totalBeats 
       {!mine && <>
         <p className="label">Pick the part you sing</p>
         <div className="who">{tracks.map((t, i) => <button key={t.id} onClick={() => setMix(m => ({ ...m, singing: t.id }))}>
-          <i style={{ background: TRACK_COLORS[i] }}/><span><b>{t.name}</b><small>{roleLabel(t)}</small></span></button>)}</div>
+          <i style={{ background: TRACK_COLORS[i] }}/><span><b>{t.name}</b>{subLabel(t) && <small>{subLabel(t)}</small>}</span></button>)}</div>
       </>}
       {mine && <section className="panel stage" aria-label="Your target notes">
         <PianoRoll tracks={[{ id: mine.id, notes: mine.notes, variant: 'target' }]} totalBeats={totalBeats}
@@ -53,7 +53,6 @@ export function PracticeScreen({ project, playback, mix, setMix, go, totalBeats 
           {[[false, 'Voice'], [true, 'Tone']].map(([value, label]) => <button key={label} aria-pressed={tones === value} onClick={() => { setTones(value); playback.stop(); }}>{label}</button>)}
         </div>
       </div>
-      <div className="note-soon"><b>Pitch feedback is coming</b>Live scoring of your pitch (on pitch / close / off, with habits after each take) is build step 5. For now, sing along with your part at any speed, using headphones.</div>
     </div>
     <button className="cta" disabled={!mine} onClick={() => (playback.playing ? playback.stop() : start())}>
       {playback.playing ? 'STOP' : mine ? `PLAY ${mine.name.toUpperCase()} AT ${speed * 100}%` : 'PICK YOUR PART'}

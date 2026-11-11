@@ -34,7 +34,7 @@ export function SplitScreen({ project, setProject, playback, showToast, go }) {
   if (!melody) return <>
     <Header/>
     <div className="scroll"><Top title={project.title} meta="No melody yet"/>
-      <div className="blank"><b>Nothing to split yet</b><p className="meta">Record yourself or upload a voice memo first.</p></div></div>
+      <div className="blank"><b>Nothing to split yet</b><p className="meta">Record a melody first.</p></div></div>
     <button className="cta" onClick={() => go('record')}><i className="dot"/>GO TO RECORD</button>
   </>;
 
@@ -65,8 +65,8 @@ export function SplitScreen({ project, setProject, playback, showToast, go }) {
   return <>
     <Header/>
     <div className="scroll">
-      <Top title="Split" meta={playback.preparing ? 'Rendering voices…' : 'Listen to each one, then pick'}/>
-      {engine?.loading && <div className="blank"><b>Writing harmonies…</b><p className="meta">Working out the chords under your melody.</p></div>}
+      <Top title="Split" meta={playback.preparing ? 'Loading voices…' : undefined}/>
+      {engine?.loading && <div className="blank"><b>Writing harmonies…</b></div>}
       {engine?.error && <p className="msg err" role="alert">{engine.error}</p>}
       <section className="arrs" aria-label="Arrangements">
         {engine?.arrangements?.map(a => <article key={a.id} className={`arr${a.id === chosen ? ' on' : ''}`}>

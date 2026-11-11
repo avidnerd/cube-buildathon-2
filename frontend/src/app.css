@@ -186,3 +186,6 @@ a.ghost{display:inline-grid;place-items:center}
 .kara-line .now{color:var(--t2)}
 .kara-next{font:500 14px/1.35 var(--ui);color:var(--muted);margin-top:10px}
 .kara-roll{height:92px;margin-top:8px}
+
+/* Short phones: a smaller roll keeps the tracks above the button */
+@media (max-height:700px){.mix{height:120px}.stage{height:160px}.top h1{font-size:26px}}

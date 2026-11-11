@@ -142,6 +142,10 @@ function fetchHarmonyOptions(track, { tempo, timeSignature }, fetchImpl) {
 }
 
 const SATB_PARTS = ['alto', 'tenor', 'bass'];
+/** A part's notes for display: rests (notes this voice leaves out) dropped, timing already moved by the engine. */
+const partNotes = (part, shift) => part.filter(p => !p.rest).map(p => makeNote(p.pitch, p.start - shift, p.duration, { lyric: p.lyric || null, ...(p.cents ? { cents: p.cents } : {}) }));
+/** Rounds, canons and echoes sing later than the lead; riffs are new notes. Neither is the lead's line. */
+const isMoved = part => part.some(p => p.delay || p.rest || p.synth);
 const describePath = path => path.timeline.map(s => s.symbol).filter((s, i, a) => s !== a[i - 1]).join(' ');
 
 /** Engine options -> the flat list the Arrange picker cycles through. */
@@ -157,7 +161,14 @@ export function harmonyChoices(options, shift = 0) {
     desc: `${describePath(path)}${path.backing === 'pad' && path.name !== 'Plain' ? ' · new chords' : ''}`,
     keyName: `${path.key.tonic} ${path.key.mode}`,
     part: path.parts[arrangement][part],
-    notes: path.parts[arrangement][part].map(p => makeNote(p.pitch, p.start - shift, p.duration, { lyric: p.lyric || null })),
+    notes: partNotes(path.parts[arrangement][part], shift),
+  });
+  const texture = (path, id, info, part) => ({
+    kind: 'harmony', id: `${path.name}-${id}-${part.id}`.toLowerCase(),
+    label: `${info.label.toUpperCase()} · ${part.label.toUpperCase()}`, name: part.label === info.label ? info.label : `${info.label} ${part.label.toLowerCase()}`,
+    style: info.label, backing: path.backing, chords: path.timeline.map(s => ({ name: s.symbol })),
+    desc: info.desc, keyName: `${path.key.tonic} ${path.key.mode}`,
+    part: path.textures[id][part.id], notes: partNotes(path.textures[id][part.id], shift),
   });
   const out = [];
   for (const path of options.paths) {
@@ -166,15 +177,21 @@ export function harmonyChoices(options, shift = 0) {
   }
   const plain = options.paths.find(p => p.name === 'Plain');
   if (plain) for (const part of SATB_PARTS) out.push(choice(plain, 'satb', part, part, `${part[0].toUpperCase()}${part.slice(1)} (SATB)`));
+  if (plain?.textures) for (const [id, info] of Object.entries(options.textures ?? {}))
+    for (const part of info.parts) out.push(texture(plain, id, info, part));
   return out;
 }
 
 const ARRANGEMENT_INFO = {
-  classic: ['3RD + 4TH', 'A third above, a fourth below. Full chord.'],
-  close: ['TIGHT 3RDS', 'A third above and a third below'],
-  stack: ['STACKED', 'A third and a fifth above'],
-  satb: ['SATB', 'Four parts, your melody on top'],
-  satb_tenor: ['SATB TENOR', 'Four parts, your melody in the tenor'],
+  classic: ['3RD + 4TH', '3rd above · 4th below'],
+  close: ['TIGHT 3RDS', '3rd above · 3rd below'],
+  stack: ['STACKED', '3rd and 5th above'],
+  satb: ['SATB', 'Melody on top'],
+  satb_tenor: ['SATB TENOR', 'Melody in the tenor'],
+  round: ['ROUND', null],
+  canon: ['CANON', null],
+  echo: ['ECHO', null],
+  riff: ['RIFF + BASS', null],
 };
 
 /** Engine options -> every arrangement with its voices, for the Split screen. */
@@ -183,21 +200,22 @@ export function arrangementsFrom(options, shift = 0) {
   if (!path) return [];
   const known = Object.keys(ARRANGEMENT_INFO);
   const ids = Object.keys(options.arrangements).sort((a, b) => (known.indexOf(a) + 1 || 99) - (known.indexOf(b) + 1 || 99));
-  return ids.map(id => {
-    const [name, desc] = ARRANGEMENT_INFO[id] ?? [options.arrangements[id].label.toUpperCase(), ''];
+  const textures = Object.keys(options.textures ?? {}).filter(id => path.textures?.[id]);
+  return [...ids, ...textures].map(id => {
+    const isTexture = textures.includes(id);
+    const info = isTexture ? options.textures[id] : options.arrangements[id];
+    const [name, desc] = ARRANGEMENT_INFO[id] ?? [info.label.toUpperCase(), ''];
+    const parts = isTexture ? path.textures[id] : path.parts[id];
     return {
-      id, name, desc, style: name, backing: path.backing,
+      id, name, desc: desc ?? info.desc ?? '', style: name, backing: path.backing,
       chords: path.timeline.map(s => ({ name: s.symbol })),
-      voices: options.arrangements[id].parts.map(({ id: voice, label }) => {
-        const part = path.parts[id][voice];
+      voices: info.parts.map(({ id: voice, label }) => {
+        const part = parts[voice];
         // SATB may lift the tune into the voice's range: it's still the singer's line.
         const leadShift = part[0].pitch - part[0].melody_pitch;
-        const isLead = leadShift % 12 === 0 && part.every(p => p.pitch - p.melody_pitch === leadShift);
-        return {
-          id: voice, label, part, isLead, leadShift: isLead ? leadShift : 0,
-          notes: part.map(p => makeNote(p.pitch, p.start - shift, p.duration, { lyric: p.lyric || null })),
-        };
-      }),
+        const isLead = !isMoved(part) && leadShift % 12 === 0 && part.every(p => p.pitch - p.melody_pitch === leadShift);
+        return { id: voice, label, part, isLead, leadShift: isLead ? leadShift : 0, notes: partNotes(part, shift) };
+      }).filter(v => v.notes.length),
     };
   });
 }

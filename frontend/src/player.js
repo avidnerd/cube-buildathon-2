@@ -12,6 +12,12 @@ function voiceSynth() {
   });
 }
 
+/** iOS Safari: 'playback' keeps sound on with the ringer switch on silent and
+ * after the mic has been used; 'play-and-record' while recording. No-op elsewhere. */
+export function setAudioSession(type) {
+  try { if (navigator.audioSession && navigator.audioSession.type !== type) navigator.audioSession.type = type; } catch { /* unsupported */ }
+}
+
 const gainToDb = gain => (gain <= 0.001 ? -Infinity : Tone.gainToDb(gain));
 
 // Decoded voices, by source key. Rendering a part is slow, so each happens once.
@@ -38,7 +44,10 @@ class Player {
   }
 
   /** Must be called from a user gesture (browsers block audio until then). */
-  async unlock() { await Tone.start(); }
+  async unlock() {
+    setAudioSession('playback');
+    await Tone.start();
+  }
 
   stop() {
     const transport = Tone.getTransport();
@@ -79,7 +88,7 @@ class Player {
       }
       const synth = voiceSynth().connect(volume);
       const part = new Tone.Part((time, n) => {
-        synth.triggerAttackRelease(Tone.Frequency(n.pitch, 'midi').toFrequency(), n.duration * secondsPerBeat * 0.97, time);
+        synth.triggerAttackRelease(noteHz(n), n.duration * secondsPerBeat * 0.97, time);
       }, track.notes.map(n => [n.start * secondsPerBeat, n])).start(0);
       this.tracks.set(track.id, { synth, volume, part });
     });
@@ -107,6 +116,9 @@ class Player {
 
 export const player = new Player();
 
+/** A note's frequency; `cents` tunes tones to the singer (who is rarely exactly at A440). */
+export const noteHz = n => Tone.Frequency(n.pitch + (n.cents || 0) / 100, 'midi').toFrequency();
+
 /** Render one or more tracks to a WAV Blob (for sharing a single part). */
 export async function renderWav({ tracks, tempo, totalBeats }) {
   const secondsPerBeat = 60 / tempo;
@@ -115,7 +127,7 @@ export async function renderWav({ tracks, tempo, totalBeats }) {
     for (const track of tracks) {
       const synth = voiceSynth().toDestination();
       new Tone.Part((time, n) => {
-        synth.triggerAttackRelease(Tone.Frequency(n.pitch, 'midi').toFrequency(), n.duration * secondsPerBeat * 0.97, time);
+        synth.triggerAttackRelease(noteHz(n), n.duration * secondsPerBeat * 0.97, time);
       }, track.notes.map(n => [n.start * secondsPerBeat, n])).start(0);
     }
     transport.start(0);
