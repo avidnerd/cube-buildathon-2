@@ -261,3 +261,37 @@ def test_harmony_moves_with_a_stepwise_run():
         for k in (1, 2, 3, 4, 5, 8, 9, 10):
             step = mel[k]["pitch"] - mel[k - 1]["pitch"]
             assert (part[k]["pitch"] - part[k - 1]["pitch"]) * step > 0, ([h["pitch"] for h in part], k)
+
+
+@pytest.mark.parametrize("arrangement", ["classic", "close", "stack"])
+def test_two_parts_are_the_joint_optimum(arrangement):
+    """Choosing both parts together scores the same objective as planning one then
+    the other around it, and is never worse than that (it is the exact minimum)."""
+    from backend.harmony.harmonizer import (_node_cost, _vectors, build_lattice, decode, decode_pair,
+                                            load_style, stepwise_run_rule)
+    mel = melody_notes([60, 62, 64, 65, 67, 65, 64, 62, 60, 67, 69, 67, 65, 64], dur=0.45)
+    key = (0, "major")
+    w = load_style()
+    wn, wd, we = _vectors(w)
+    (_, _, sa, ta), (_, _, sb, tb) = ARRANGEMENTS[arrangement]["parts"]
+
+    def cost(lat, path):
+        run = stepwise_run_rule(mel, lat)
+        c = sum(float(_node_cost(lat, i, wn, wd)[j]) for i, j in enumerate(path))
+        return c + sum(float((lat.edge[i - 1].astype(np.float64) @ we)[path[i - 1], path[i]] - np.broadcast_to(run(i), lat.edge[i - 1].shape[:2])[path[i - 1], path[i]])
+                       for i in range(1, len(path)))
+
+    la = build_lattice(mel, C_CHORD, key, VOICE, sa, ta)
+    seq_a = decode(la, w, edge_extra=stepwise_run_rule(mel, la))
+    lb_seq = build_lattice(mel, C_CHORD, key, VOICE, sb, tb, others=[[int(la.cands[i][j]) for i, j in enumerate(seq_a)]])
+    seq_b = decode(lb_seq, w, edge_extra=stepwise_run_rule(mel, lb_seq))
+    sequential = cost(la, seq_a) + cost(lb_seq, seq_b)
+
+    lb = build_lattice(mel, C_CHORD, key, VOICE, sb, tb)
+    ja, jb, joint = decode_pair(mel, la, lb, w)
+    # the joint objective, evaluated at the sequential answer, is the sequential score
+    from backend.harmony.harmonizer import pair_cost
+    at_seq = cost(la, seq_a) + cost(lb, seq_b) + sum(
+        float(pair_cost(mel, i, la.cands[i], lb.cands[i], w)[seq_a[i], seq_b[i]]) for i in range(len(mel)))
+    assert np.isclose(at_seq, sequential, atol=1e-3)
+    assert joint <= sequential + 1e-6

@@ -120,6 +120,9 @@ DEFAULT_WEIGHTS: dict[str, float] = {
     "parallel_perfect": 0.6, "leap": 0.5,
     **{f: 0.0 for f in DEGREE_PAIRS},
 }
+# No part below E2 (~82 Hz), the bottom of a bass's range: lower than that nobody in
+# the group can sing it, and the re-pitched voice turns to a growl.
+LOWEST_VOICE = 40
 NET_WINDOW = 14        # semitones around the lead the learned model was trained on
 CONSONANT_BAND = 0.45  # measured dissonance within this of the best counts as no clash
 CLASH_FULL_S = 0.25    # clashes count fully once held this long (shorter ones pass by)
@@ -227,7 +230,7 @@ def build_lattice(
         m = int(n["pitch"])
         ch = chord_at(0.5 * (n["t0"] + n["t1"]))
         base = list(ch.tones) if ch is not None else [tonic, (tonic + (4 if mode == "major" else 3)) % 12, (tonic + 7) % 12]
-        pool = set(range(low, high + 1)) | {m}
+        pool = {p for p in range(max(low, LOWEST_VOICE), high + 1)} | {m}
         if max_iv is not None:
             pool = {p for p in pool if abs(p - m) <= max_iv}
         if must_include is not None and must_include[k] is not None:
@@ -431,10 +434,60 @@ def plan_parts(melody, chord_at, key, voice, arrangement: str = "classic",
         cache = {id(n): scene_for(n) for n in melody}
         scene_for = lambda n, _c=cache: _c[id(n)]  # noqa: E731
     out: dict[str, list[dict]] = {}
+    if len(arr["parts"]) == 2 and melody and not (weights is None and USE_LEARNED_MODEL):
+        # Both voices chosen together: the exact minimum of the two parts' costs
+        # plus how they sound against each other (doubling, rubs, a full triad).
+        (pa, _, sa, ta), (pb, _, sb, tb) = arr["parts"]
+        la = build_lattice(melody, chord_at, key, voice, sa, ta, scene_for)
+        lb = build_lattice(melody, chord_at, key, voice, sb, tb, scene_for)
+        ia, ib, _ = decode_pair(melody, la, lb, weights or load_style())
+        for pid, lat, path in ((pa, la, ia), (pb, lb, ib)):
+            out[pid] = mirror_runs(melody, _notes(melody, lat, path))
+        return out
     for pid, _, side, target in arr["parts"]:  # later parts fill in around earlier ones
         others = [[h["pitch"] for h in part] for part in out.values()]
         out[pid] = mirror_runs(melody, plan_part(melody, chord_at, key, voice, side, target, scene_for, others, weights, personal))
     return out
+
+
+def pair_cost(melody: Sequence[dict], k: int, a: np.ndarray, b: np.ndarray, w: dict[str, float]) -> np.ndarray:
+    """(A, B) cost of two harmony parts against each other at note k: the
+    part_double / part_rub / completes_triad features, as build_lattice scores them."""
+    n = melody[k]
+    m = int(n["pitch"]) % 12
+    held = min(1.0, (n["t1"] - n["t0"]) / CLASH_FULL_S)
+    A, B = a[:, None], b[None, :]
+    ic = np.abs(A - B) % 12
+    triad = np.array([[_is_triad({m, int(x) % 12, int(y) % 12}) for y in b] for x in a], dtype=float)
+    return (w["part_double"] * (A % 12 == B % 12)
+            + w["part_rub"] * held * (np.isin(ic, (1, 2, 10, 11)) + 4.0 * (ic == 6))
+            + w["completes_triad"] * triad)
+
+
+def decode_pair(melody, la: Lattice, lb: Lattice, w: dict[str, float]) -> tuple[list[int], list[int], float]:
+    """Exact joint Viterbi over two parts (see optimal.pair_chain)."""
+    from backend.harmony.optimal import pair_chain
+
+    wn, wd, we = _vectors(w)
+    runs = [stepwise_run_rule(melody, lat) if RUN_RULE else None for lat in (la, lb)]
+
+    def edges(lat, run):
+        def e(i):
+            x = lat.edge[i - 1].astype(np.float64) @ we
+            return x - run(i) if run is not None else x
+        return e
+
+    na = [_node_cost(la, i, wn, wd).astype(np.float64) for i in range(len(melody))]
+    nb = [_node_cost(lb, i, wn, wd).astype(np.float64) for i in range(len(melody))]
+    pair = [pair_cost(melody, i, la.cands[i], lb.cands[i], w) for i in range(len(melody))]
+    return pair_chain(na, nb, pair, edges(la, runs[0]), edges(lb, runs[1]))
+
+
+def _notes(melody, lat: Lattice, path: Sequence[int]) -> list[dict]:
+    return [{"pitch": int(opts[j]), "melody_pitch": int(n["pitch"]), "t0": n["t0"], "t1": n["t1"],
+             "start": n.get("start"), "duration": n.get("duration"),
+             "lyric": n.get("lyric", ""), "word_start": n.get("word_start", False)}
+            for n, opts, j in zip(melody, lat.cands, path)]
 
 
 RUN_NOTE_S = 0.11   # notes shorter than this, joined to a neighbour, are grace notes (real melody notes are longer)
