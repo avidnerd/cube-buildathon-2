@@ -27,13 +27,12 @@ export function ShareSheet({ project, setProject, onClose, showToast }) {
   return <section className="sheet" role="dialog" aria-label="Share with friends">
     <Header><button className="ghost txt" onClick={onClose}>Done</button></Header>
     <div className="scroll">
-      <div className="top"><div className="t"><h1>Share</h1><p className="meta">Friends pick a part and sing along. No account needed.</p></div></div>
+      <div className="top"><div className="t"><h1>Share</h1></div></div>
       <p className="label">Title</p>
       <div className="field"><input value={project.title} maxLength={100} aria-label="Title" disabled={state.status === 'uploading'}
         onChange={e => setProject(p => ({ ...p, title: e.target.value }))}/></div>
       <p className="label" style={{ paddingTop: 14 }}>Going out</p>
       <div className="who">{project.tracks.map(t => <div key={t.id} className="going"><b>{t.name}</b></div>)}</div>
-      <p className="hint">Anyone with the link can hear these voices.</p>
       {state.status === 'uploading' && <div className="progress" style={{ margin: '14px 20px 0' }}><i style={{ width: `${state.done / state.total * 100}%` }}/></div>}
       {state.status === 'error' && <p className="msg err" role="alert">{state.message}</p>}
       {state.status === 'ready' && <>

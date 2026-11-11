@@ -4,10 +4,10 @@ import React, { useMemo } from 'react';
 import { TRACK_COLORS, beatsPerBar } from '../project.js';
 import { karaokeGains, mixGains } from '../mix.js';
 import { playbackOptions } from '../playbackSources.js';
-import { hasWords, karaokeLines, lineIndexAt, noteName } from '../karaoke.js';
+import { karaokeLines, lineIndexAt, noteName } from '../karaoke.js';
 import { Header, PianoRoll, Top } from '../ui/kit.jsx';
 import { useLiveGains } from './Arrange.jsx';
-import { roleLabel } from './Parts.jsx';
+import { subLabel } from './Parts.jsx';
 
 const COUNT_IN_BEATS = 4;
 
@@ -31,7 +31,7 @@ export function KaraokeScreen({ project, playback, mix, setMix, go, totalBeats }
   if (!melody) return <>
     <Header/>
     <div className="scroll"><Top title="Karaoke" meta="No song yet"/>
-      <div className="blank"><b>Nothing to sing yet</b><p className="meta">Record a melody and pick your harmonies first.</p></div></div>
+      <div className="blank"><b>Nothing to sing yet</b><p className="meta">Record a melody first.</p></div></div>
     <button className="cta" onClick={() => go('record')}><i className="dot"/>GO TO RECORD</button>
   </>;
 
@@ -53,7 +53,7 @@ export function KaraokeScreen({ project, playback, mix, setMix, go, totalBeats }
       <div className="who">{tracks.map((t, i) => <button key={t.id} aria-pressed={mix.singing === t.id}
         style={mix.singing === t.id ? { background: TRACK_COLORS[i] } : undefined}
         onClick={() => { playback.stop(); setMix(m => ({ ...m, singing: t.id })); }}>
-        <i style={{ background: TRACK_COLORS[i] }}/><span><b>{t.name}</b><small>{roleLabel(t)}</small></span></button>)}
+        <i style={{ background: TRACK_COLORS[i] }}/><span><b>{t.name}</b>{subLabel(t) && <small>{subLabel(t)}</small>}</span></button>)}
       </div>
       {mine && <>
         <section className="panel kara" aria-live="off" aria-label="Lyrics">
@@ -61,7 +61,6 @@ export function KaraokeScreen({ project, playback, mix, setMix, go, totalBeats }
           <p className="kara-line">{line ? <Line line={line} beat={beat} live={playback.playing}/> : ''}</p>
           <p className="kara-next">{next ? <Line line={next} beat={0} live={false}/> : ''}</p>
         </section>
-        {!hasWords(lines) && <p className="msg">No words were heard in this take, so follow the notes below.</p>}
         <section className="panel kara-roll" aria-label="Your notes for this line">
           {line && <PianoRoll tracks={[{ id: mine.id, color: TRACK_COLORS[index], notes: windowNotes }]} totalBeats={Math.max(1, line.end - line.start)}
             beatsPerBar={beatsPerBar(project.timeSignature)} beat={playback.playing ? beat - line.start : null}/>}

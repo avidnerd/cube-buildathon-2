@@ -2,14 +2,11 @@
 // guessed afterwards) or with a count-in; live trace, takes, transcription.
 import React, { useEffect, useRef, useState } from 'react';
 import { useRecorder } from '../useRecorder.js';
-import { analyzeMelody } from '../analyzeMelody.js';
-import { notesEnd, notesFromSeconds } from '../noteModel.js';
+import { notesEnd } from '../noteModel.js';
 import { beatsPerBar, keyToSpec, makeTrack } from '../project.js';
 import { Header, PianoRoll, Top } from '../ui/kit.jsx';
 
 const METERS = ['4/4', '3/4', '6/8'];
-// SAMPLE DATA: a short demo phrase (MIDI pitch, beats) for when live recording isn't possible.
-const DEMO = [[62, 0, 1], [67, 1, 1], [67, 2, 0.5], [69, 2.5, 0.5], [71, 3, 1], [69, 4, 1], [67, 5, 1], [64, 6, 1], [62, 7, 2]];
 
 export function RecordScreen({ project, setProject, takes, setTakes, showToast, go, blankTake, clearBlankTake }) {
   const [bpm, setBpm] = useState(project.tempo);
@@ -37,14 +34,6 @@ export function RecordScreen({ project, setProject, takes, setTakes, showToast, 
     showToast(`TAKE ${selected + 1} READY TO SPLIT`);
     go('split');
   }
-  function loadDemo() {
-    // Treat the sample like a free-sung take: timing in seconds, estimates guessed from it.
-    const seconds = DEMO.map(([midi, s, d]) => ({ midi, start: s * 60 / 92, duration: d * 60 / 92 }));
-    const estimate = analyzeMelody(seconds);
-    addTake({ notes: notesFromSeconds(seconds, estimate.bpm), seconds, bpm: estimate.bpm, meter: estimate.meter, key: estimate.key,
-      notice: `Sample data. ${estimate.notice.replace('You can adjust all three below.', 'You can adjust all three in Settings.')}`, label: 'demo' });
-    showToast('DEMO TAKE LOADED');
-  }
 
   // What the roll shows: live trace while recording, otherwise the selected take.
   const liveNotes = rec.live.frames.map(f => ({ pitch: f.pitch, start: f.beat, duration: 0.06 }));
@@ -58,14 +47,13 @@ export function RecordScreen({ project, setProject, takes, setTakes, showToast, 
     const secs = Math.max(0, rec.live.beat) * 60 / bpm;
     deck = <><div className="big">{String(Math.floor(secs / 60)).padStart(2, '0')}:{(secs % 60).toFixed(1).padStart(4, '0')}</div><p className="rec"><i/>REC</p></>;
   } else if (rec.status === 'processing') deck = <><div className="big small">{rec.progress}%</div><p className="meta">{rec.stage}</p><div className="progress" style={{ width: 200 }}><i style={{ width: `${rec.progress}%` }}/></div></>;
-  else if (take) deck = <><div className="big small">TAKE {selected + 1}</div><p className="meta">{take.notes.length} notes · {take.bpm} BPM · {take.meter} · {keyToSpec(take.key)}{take.label === 'demo' ? ' · sample' : ''}{inUse ? ' · in use' : ''}</p></>;
+  else if (take) deck = <><div className="big small">TAKE {selected + 1}</div><p className="meta">{take.notes.length} notes · {take.bpm} BPM · {take.meter} · {keyToSpec(take.key)}{inUse ? ' · in use' : ''}</p></>;
   else deck = <div className="big">READY</div>;
 
   const levelBars = Math.round(rec.live.level * 16);
   return <>
     <Header>{!busy && <>
       <button className="ghost txt" onClick={() => fileInput.current.click()}>Voice memo</button>
-      <button className="ghost txt" onClick={loadDemo}>Demo</button>
       <input ref={fileInput} type="file" accept="audio/*" hidden aria-label="Upload a voice memo or song"
         onChange={e => { rec.upload(e.target.files[0]); e.target.value = ''; }}/>
     </>}</Header>
@@ -82,7 +70,6 @@ export function RecordScreen({ project, setProject, takes, setTakes, showToast, 
           hint={busy ? 'Your notes appear here as you sing' : undefined}/>
       </section>
       {rec.message && <p className="msg err" role="alert">{rec.message}</p>}
-      {take && !busy && <p className="msg">{take.notice}</p>}
       <div className="settings">
         <button className="chip" aria-pressed={countIn} disabled={busy} onClick={() => setCountIn(c => !c)}>Count-in</button>
         {countIn && <>

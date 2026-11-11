@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from 'react';
 import { detectPitch, frequencyToMidi } from './pitch.js';
 import { analyzeAudio, takeFromAnalysis } from './harmonyApi.js';
 import { analyzeMelody } from './analyzeMelody.js';
+import { setAudioSession } from './player.js';
 
 const MAX_SECONDS = 60;
 const MIC_ERRORS = {
@@ -49,6 +50,7 @@ export function useRecorder({ bpm, meter, beatsPerBar, countIn, clickOn, onTake 
     s.stream?.getTracks().forEach(t => t.stop());
     s.source?.disconnect();
     if (s.ctx && s.ctx.state !== 'closed') s.ctx.close().catch(() => {});
+    setAudioSession('playback'); // give playback the speaker back (iOS)
   }
   useEffect(() => () => { if (session.current) release(session.current); session.current = null; }, []);
 
@@ -122,10 +124,14 @@ export function useRecorder({ bpm, meter, beatsPerBar, countIn, clickOn, onTake 
     try {
       if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder)
         throw new Error('Recording needs Chrome or Safari on localhost or HTTPS.');
+      setAudioSession('play-and-record');
       s.ctx = new AudioContext();
-      await s.ctx.resume();
+      s.ctx.resume(); // inside the tap, before any await (iOS)
       s.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
       if (session.current !== s) { s.stream.getTracks().forEach(t => t.stop()); return; }
+      // iOS can suspend or interrupt the context while it switches to the mic; its clock would freeze.
+      if (s.ctx.state !== 'running') await s.ctx.resume();
+      s.ctx.onstatechange = () => { if (session.current === s && s.ctx.state !== 'running' && s.ctx.state !== 'closed') s.ctx.resume().catch(() => {}); };
       s.source = s.ctx.createMediaStreamSource(s.stream);
       const analyser = s.ctx.createAnalyser(); analyser.fftSize = 2048;
       s.source.connect(analyser);

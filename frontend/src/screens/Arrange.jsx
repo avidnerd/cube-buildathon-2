@@ -16,12 +16,6 @@ import { basisOf } from '../arrangement.js';
 
 const chordText = chords => (chords?.length ? chords.map(c => c.name).filter((n, i, a) => n !== a[i - 1]).join(' ') : '–');
 
-const COUNTER_DESC = {
-  soprano: 'High line that weaves around the tune',
-  alto: 'Mid-range line that weaves around the tune',
-  tenor: 'Lower line that weaves around the tune',
-  bass: 'Low line that weaves around the tune',
-};
 
 export function MuteSolo({ id, name, mix, setMix }) {
   const toggleMute = () => setMix(m => ({ ...m, mute: { ...m.mute, [id]: !m.mute[id] }, solo: m.solo === id ? null : m.solo }));
@@ -107,7 +101,7 @@ export function ArrangeScreen({ project, setProject, playback, mix, setMix, show
     <Header/>
     <div className="scroll">
       <Top title={project.title} meta="No melody yet"/>
-      <div className="blank"><b>Nothing on the tape</b><p className="meta">Record a phrase (or load the demo) and it will show up here as track 1.</p></div>
+      <div className="blank"><b>Nothing on the tape</b><p className="meta">Record a melody to start.</p></div>
     </div>
     <button className="cta" onClick={() => go('record')}><i className="dot"/>GO TO RECORD</button>
   </>;
@@ -149,11 +143,11 @@ export function ArrangeScreen({ project, setProject, playback, mix, setMix, show
     const color = TRACK_COLORS[i];
     if (picking?.slot === i) {
       const desc = option.kind === 'harmony' ? option.desc
-        : option.kind === 'status' ? (engine?.error || 'Working out chords and harmonies…')
+        : option.kind === 'status' ? (engine?.error || 'Loading…')
         : entry?.loading ? 'Writing a line…' : entry?.error ? entry.error
-          : entry?.result ? `${COUNTER_DESC[option.voice]} · ${entry.result.style === 'calm' ? 'calm' : 'active'}${entry.result.fallback ? ' · safe' : ''} · chords ${chordText(entry.result.chords)}` : '';
+          : entry?.result ? `${entry.result.style === 'calm' ? 'calm' : 'active'}${entry.result.fallback ? ' · safe' : ''} · chords ${chordText(entry.result.chords)}` : '';
       rows.push(<div key={i} className="trk" style={{ background: color }}>
-        <div className="row"><span className="nm">{t ? t.name : `Track ${i + 1}`}<small>Choose a line</small></span>
+        <div className="row"><span className="nm">{t ? t.name : `Track ${i + 1}`}</span>
           {t && t.role !== 'melody' && <button className="x" aria-label="Remove track" onClick={() => remove(i)}>⌫</button>}
           <button className="x" aria-label="Close picker" onClick={() => setPicking(null)}>×</button></div>
         <div className="pick">
@@ -169,7 +163,7 @@ export function ArrangeScreen({ project, setProject, playback, mix, setMix, show
     } else if (t) {
       const small = t.role === 'melody' ? `Your recording · ${project.key}`
         : t.role === 'harmony' ? (t.basis === basis ? `${t.style} · chords ${chordText(t.chords)}` : 'Melody changed · tap to pick again')
-        : refreshing && t.basis !== basisOf(project) ? 'Rewriting to match the melody…'
+        : refreshing && t.basis !== basisOf(project) ? 'Updating…'
           : `${t.style === 'calm' ? 'Calm' : 'Active'}${t.fallback ? ' (safe)' : ''} · chords ${chordText(t.chords)}`;
       rows.push(<div key={i} className={`trk${isOn(t.id) ? '' : ' off'}`} style={{ background: color }}>
         <div className="row">
@@ -180,7 +174,7 @@ export function ArrangeScreen({ project, setProject, playback, mix, setMix, show
       </div>);
     } else if (i === project.tracks.length && !picking) {
       rows.push(<button key={i} className="empty" onClick={() => openPicker(i)}>
-        <span className="nm">Add a part<small>Harmony or counter-melody</small></span>{Icon.plus}</button>);
+        <span className="nm">Add a part</span>{Icon.plus}</button>);
     }
   }
 
@@ -204,7 +198,6 @@ export function ArrangeScreen({ project, setProject, playback, mix, setMix, show
     <div className="scroll">
       <Top title={project.title} meta={playback.preparing ? 'Rendering voices…' : `${project.key} · ${project.tempo} bpm · ${project.timeSignature}`} beat={playback.beat} timeSignature={project.timeSignature}
         playing={playback.playing} onPlay={togglePlay}/>
-      {project.notice && <p className="msg" role="status" style={{ marginTop: 0, marginBottom: 12 }}>Tempo, time signature and key were guessed from your singing. <button className="link" onClick={() => setSettings(true)}>Check them in Settings</button>.</p>}
       <section className="panel mix" aria-label="All tracks layered">
         <PianoRoll totalBeats={totalBeats} beatsPerBar={bar} beat={playback.playing ? playback.beat : 0}
           tracks={[...project.tracks.map((t, i) => (picking?.slot === i ? null : { id: t.id, color: TRACK_COLORS[i], notes: t.notes, dim: !isOn(t.id) })).filter(Boolean),
@@ -212,7 +205,7 @@ export function ArrangeScreen({ project, setProject, playback, mix, setMix, show
       </section>
       <section className="tracks" aria-label="Tracks">{rows}
         {showBand && <div className={`trk${bandOn && (mix.solo ? mix.solo === 'band' : !mix.mute.band) ? '' : ' off'}`} style={{ background: 'var(--cream)' }}>
-          <div className="row"><span className="nm">Band<small>{bandOn ? 'The music from your song' : 'Off while new chords are playing'}</small></span>
+          <div className="row"><span className="nm">Band{!bandOn && <small>Off with new chords</small>}</span>
             <MuteSolo id="band" name="Band" mix={mix} setMix={setMix}/></div>
         </div>}
       </section>

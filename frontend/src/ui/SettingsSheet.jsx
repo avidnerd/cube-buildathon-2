@@ -18,7 +18,6 @@ function Seg({ label, value, options, onChange }) {
 export function SettingsSheet({ project, setProject, onClose }) {
   const [tempoText, setTempoText] = useState(String(project.tempo));
   useEffect(() => setTempoText(String(project.tempo)), [project.tempo]);
-  const melody = project.tracks.find(t => t.role === 'melody');
   const update = changes => setProject(p => applySettings(p, changes));
   function commitTempo(value) {
     const bpm = Math.round(Number(value));
@@ -29,8 +28,7 @@ export function SettingsSheet({ project, setProject, onClose }) {
   return <section className="sheet" role="dialog" aria-label="Settings">
     <Header><button className="ghost txt" onClick={() => { setProject(p => ({ ...p, notice: '' })); onClose(); }}>Done</button></Header>
     <div className="scroll">
-      <div className="top"><div className="t"><h1>Settings</h1><p className="meta">Fix anything the app guessed wrong</p></div></div>
-      {project.notice && <p className="msg" role="status" style={{ marginTop: 0, marginBottom: 12 }}>{project.notice}</p>}
+      <div className="top"><div className="t"><h1>Settings</h1></div></div>
 
       <p className="label">Title</p>
       <div className="field"><input value={project.title} maxLength={100} aria-label="Title"
@@ -45,9 +43,7 @@ export function SettingsSheet({ project, setProject, onClose }) {
             onKeyDown={e => e.key === 'Enter' && commitTempo(e.target.value)}/>
           <button aria-label="Faster" onClick={() => step(1)}>+</button>
         </div>
-        <span className="meta">{melody?.recording ? 'Re-reads the rhythm you sang' : 'Changes playback speed'}</span>
       </div>
-      <p className="hint">Half or double the tempo can also fit. If the rhythm looks too busy or too slow, try that.</p>
 
       <div style={{ paddingTop: 6 }}><Seg label="Time signature" value={project.timeSignature} options={[['4/4', '4/4'], ['3/4', '3/4'], ['6/8', '6/8']]}
         onChange={v => update({ timeSignature: v })}/></div>
@@ -61,7 +57,6 @@ export function SettingsSheet({ project, setProject, onClose }) {
         onChange={v => update({ melodyClef: v })}/></div>
       <div style={{ paddingTop: 6 }}><Seg label="Note spelling" value={project.spelling || 'auto'} options={[['auto', 'Follow key'], ['sharps', 'Sharps ♯'], ['flats', 'Flats ♭']]}
         onChange={v => update({ spelling: v })}/></div>
-      <p className="hint">Changing the key, time signature or the melody's rhythm rewrites any counter-melodies to match.</p>
     </div>
   </section>;
 }
