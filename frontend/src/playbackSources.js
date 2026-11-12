@@ -16,7 +16,9 @@ function sourceFor(track, melody, project, timing) {
   const { job } = melody.backend;
   if (track.role === 'melody' && track.leadShift)
     return { key: `${job}/lead/${track.leadShift}/${harmonyBasis(melody)}`, job, melody: engineMelody(melody, project.tempo), part: track.part, offset: timing.origin };
-  if (track.role === 'melody') return { key: `${job}/vocals`, url: stemUrl(job, 'vocals'), offset: timing.origin };
+  // The singer's own take, pitch-corrected onto their notes (raw take if the engine can't).
+  if (track.role === 'melody')
+    return { key: `${job}/lead-tuned/${harmonyBasis(melody)}`, job, melody: engineMelody(melody, project.tempo), lead: true, fallback: stemUrl(job, 'vocals'), offset: timing.origin };
   if (track.role !== 'harmony' || !track.part || track.basis !== harmonyBasis(melody)) return null;
   if (track.part.some(p => p.synth)) return null; // riffs and bass lines are new notes: played as tones
   return { key: `${job}/${track.id}/${track.basis}`, job, melody: engineMelody(melody, project.tempo), part: track.part, offset: timing.origin };

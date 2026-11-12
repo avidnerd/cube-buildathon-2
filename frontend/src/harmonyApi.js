@@ -245,13 +245,16 @@ export function trackFromVoice(voice, arrangement, basis) {
 
 export const stemUrl = (job, stem) => `${ENGINE}/api/job/${job}/audio/${stem}.wav`;
 
-/** Fetch a WAV: { url } for a stem, or { job, melody, part } for the lead's voice singing a part. */
+/** Fetch a WAV: { url } for a stem, { job, melody, part } for the lead's voice singing a part,
+ *  or { job, melody, lead: true } for the lead's own take in tune (then `fallback`, a stem, if that fails). */
 export async function fetchAudio(source) {
   const isEngine = !source.url || !/^https?:/.test(source.url) || (ENGINE && source.url.startsWith(ENGINE));
   const headers = isEngine ? engineHeaders : {};
-  const response = source.url
+  const body = source.lead ? { job: source.job, melody: source.melody, lead: true } : { job: source.job, melody: source.melody, part: source.part };
+  let response = source.url
     ? await fetch(source.url, { headers })
-    : await fetch(`${ENGINE}/api/render`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ job: source.job, melody: source.melody, part: source.part }) });
+    : await fetch(`${ENGINE}/api/render`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) });
+  if (!response.ok && source.fallback) response = await fetch(source.fallback, { headers: engineHeaders });
   if (!response.ok) throw new Error(`audio unavailable (${response.status})`);
   return response.arrayBuffer();
 }

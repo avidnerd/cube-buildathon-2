@@ -88,7 +88,8 @@ test('real voices play at the sung tempo, in sync with the recording', () => {
   const project = projectWith(m => [harmonyTrack(harmonyBasis(m))]);
   const out = playbackOptions(project, project.tracks, { melody: 1 }, quiet);
   assert.equal(out.tempo, 100.4);
-  assert.equal(out.tracks[0].audio.url, '/api/job/j/audio/vocals.wav');
+  assert.equal(out.tracks[0].audio.lead, true);                  // the lead's own take, tuned by the engine
+  assert.equal(out.tracks[0].audio.fallback, '/api/job/j/audio/vocals.wav');
   assert.equal(out.tracks[1].audio.job, 'j');
   assert.equal(out.tracks[1].audio.offset, project.tracks[0].timing.origin);
   assert.equal(out.gains.band, 0.7);
