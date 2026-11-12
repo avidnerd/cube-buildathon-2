@@ -13,6 +13,7 @@ API
     GET  /api/job/<id>/audio/<stem>.wav   vocals | accompaniment
     POST /api/options      {melody, chords?, novelty, palette, locks, voice, beats_per_bar, chord_every}
     POST /api/render       {job, melody, part} -> WAV: the lead's voice singing the part
+                           {job, melody, lead: true} -> WAV: the lead's own take, in tune
     POST /api/lyrics       {notes, text}  -> notes with typed lyrics + lines
     POST /api/reharmonize  {melody, chords, ...}   (manual page)
 """
@@ -35,7 +36,7 @@ import numpy as np
 from backend.harmony.beats import BeatGrid, resample, track_beats
 from backend.harmony.chords import detect_chords
 from backend.harmony.dissonance import Listener, chord_scene
-from backend.harmony.harmonizer import ARRANGEMENTS, plan_parts, render_part
+from backend.harmony.harmonizer import ARRANGEMENTS, heard_after_tuning, plan_parts, render_part, tune_lead
 from backend.harmony.textures import TEXTURES, beat_seconds, describe, follow_singer, place, plan_textures
 from backend.harmony.lyrics import (
     attach_lyrics,
@@ -290,12 +291,13 @@ def _studio_payload(paths, names, melody, beats, voice: dict, job_id: str | None
     timed = [n for n in melody if "t0" in n and "t1" in n]
     listener, f0 = _listener(job_id)
     tuning = float(((_jobs.get(job_id or "") or {}).get("result") or {}).get("tuning_cents") or 0.0)
-    # What was really sung, on the transcription's grid (for parts played as tones).
+    # What the listener hears from the lead (its take after tune_lead), on the
+    # transcription's grid, for parts played as tones.
     heard = {}
     for i, n in enumerate(timed):
         hz = _lead_hz(f0, n)
         if hz:
-            heard[i] = 69 + 12 * np.log2(hz / 440.0) - tuning / 100.0
+            heard[i] = heard_after_tuning(69 + 12 * np.log2(hz / 440.0) - tuning / 100.0, int(n["pitch"]))
     sung = [{**n, "heard": heard[i]} if i in heard else n for i, n in enumerate(timed)]
     personal = _song_personal(timed)
     out = []
@@ -441,11 +443,22 @@ _render_cache: dict[tuple, bytes] = {}
 
 
 def api_render(req: dict) -> bytes:
-    """The lead's own voice re-pitched onto a harmony part (WAV bytes)."""
+    """The lead's own voice re-pitched onto a harmony part, or (lead: true) its own
+    take pitch-corrected onto its notes (WAV bytes)."""
     job = _jobs.get(req["job"])
     if job is None or "f0" not in job or "vocals" not in job["audio"]:
         raise KeyError("no vocals for this job")
-    melody, part = req["melody"], req["part"]
+    melody = req["melody"]
+    if req.get("lead"):     # the lead's own take, pitch-corrected onto its notes
+        key = (req["job"], "lead", tuple((round(m["t0"], 3), round(m["t1"], 3), m["pitch"]) for m in melody))
+        if key not in _render_cache:
+            vocals, sr = job["audio"]["vocals"]
+            times, hz = job["f0"]
+            tuning = (job.get("result") or {}).get("tuning_cents", 0.0)
+            y = tune_lead(vocals, sr, times, hz, melody, tuning_cents=tuning)
+            _render_cache[key] = wav_bytes(y.astype(np.float32), sr)
+        return _render_cache[key]
+    part = req["part"]
     if len(melody) != len(part):
         raise ValueError("melody and part must have the same notes")
     if any(h.get("synth") for h in part):

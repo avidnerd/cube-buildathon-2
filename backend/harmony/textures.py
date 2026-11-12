@@ -10,7 +10,8 @@ the song's chords by general rules (nothing is looked up per song):
   round   the melody itself enters again, 1-4 bars later (up to three
           entries). The delay is the one whose overlaps sound best.
   canon   one imitating voice at a diatonic interval (3rd, 5th, 6th...),
-          a short distance behind. Interval and delay chosen the same way.
+          a short distance behind. Interval and delay chosen the same way;
+          a note that would rub against the lead is left out (breathed over).
   echo    call and response: the end of each phrase is answered in the
           rest that follows it, on the pitch that fits the chord there.
   riff    a one-bar hook taken from the tune's own rhythm and contour,
@@ -232,14 +233,52 @@ def plan_round(melody, chord_at, key, voice, spb: float, bar: int) -> dict[str, 
 
 
 CANON_STEPS = (-6, -5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 6)   # every diatonic interval (unison/octave are rounds)
+W_DROP = 2.0            # per second a canon note is left out (silence beats a rub, not a fine note)
+CANON_MIN_SUNG = 0.6    # a canon that leaves out more than this much of the tune isn't one
+
+
+def _note_cost(n, lead, chord_at, voice) -> float:
+    """What one canon note adds to the objective (against the lead)."""
+    me = [(n["t0"], n["t1"], int(n["pitch"]))]
+    s = overlap_stats(me, lead)
+    return (W_CLASH * s["clash"] + W_OUTSIDE * _outside(me, chord_at) + W_DOUBLING_CANON * s["doubling"]
+            - W_SWEET * s["sweet"] + _range_cost(me, voice))
+
+
+def _prune_canon(part, melody, chord_at, voice) -> list[dict]:
+    """Leave out exactly the notes that cost more than their silence would.
+
+    The objective (canon_objective) is a sum over notes, each either sung (its
+    own cost) or left out (W_DROP per second), so deciding note by note is the
+    exact minimum for this interval, delay and octave."""
+    lead = _sounding(_sung(melody))
+    out = []
+    for n in part:
+        drop = _note_cost(n, lead, chord_at, voice) > W_DROP * (n["t1"] - n["t0"])
+        out.append({**n, "rest": True} if drop else {k: v for k, v in n.items() if k != "rest"})
+    return out
+
+
+def canon_objective(part, melody, chord_at, voice=(0, 127, 0, 127)) -> tuple[float, float]:
+    """(cost per second of the whole line, sung and left-out notes alike; clash share
+    of what is sung). inf if the sung notes barely overlap the lead."""
+    total = sum(n["t1"] - n["t0"] for n in part) or 1.0
+    c, _, share = _entry_cost(part, [melody], chord_at, W_DOUBLING_CANON, voice)
+    if not np.isfinite(c) or not _sung(part):
+        return float("inf"), 1.0
+    dropped = sum(n["t1"] - n["t0"] for n in part if n.get("rest"))
+    if dropped > (1 - CANON_MIN_SUNG) * total:
+        return float("inf"), 1.0
+    return (c + W_DROP * dropped) / total, share
 
 
 def plan_canon(melody, chord_at, key, voice, spb: float, bar: int) -> dict[str, list[dict]] | None:
     """One imitating voice at a diatonic interval, a short distance behind.
 
     Searched exhaustively: every diatonic interval, every delay of 1 beat to 2
-    bars, every octave. Objective: cost per sung second against the lead, with
-    the clash share under the limit. The minimum is returned.
+    bars, every octave; for each, the notes that would rub against the lead are
+    left out (exactly, see _prune_canon). Objective: canon_objective, with the
+    clash share of the sung notes under the limit. The minimum is returned.
     """
     best = None
     for steps in CANON_STEPS:
@@ -248,7 +287,8 @@ def plan_canon(melody, chord_at, key, voice, spb: float, bar: int) -> dict[str, 
                 part = _moved(melody, steps, db * spb, db, key, octave)
                 if _too_low(part):
                     continue
-                cost, share = _score_entry(part, [melody], chord_at, W_DOUBLING_CANON, voice)
+                part = _prune_canon(part, melody, chord_at, voice)
+                cost, share = canon_objective(part, melody, chord_at, voice)
                 if share <= MAX_CLASH_SHARE and np.isfinite(cost) and (best is None or cost < best[0] - 1e-12):
                     best = (cost, [{**n, "interval": steps + 7 * (octave // 12)} for n in part])
     return None if best is None else {"canon": best[1]}

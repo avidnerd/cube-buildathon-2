@@ -107,17 +107,31 @@ def test_riff_and_bass_are_the_joint_optimum():
 
 
 def test_round_and_canon_are_the_best_of_every_option():
-    from backend.harmony.textures import (CANON_STEPS, MAX_CLASH_SHARE, OCTAVES, W_DOUBLING_CANON, _moved,
-                                          _score_entry)
+    from backend.harmony.textures import CANON_STEPS, MAX_CLASH_SHARE, OCTAVES, _moved, canon_objective
     m = mel(FRERE)
     canon = plan_textures(m, C, KEY, VOICE, BEATS, 4, 0)["canon"]["canon"]
-    chosen, _ = _score_entry(canon, [m], C, W_DOUBLING_CANON, VOICE)
+    chosen, _ = canon_objective(canon, m, C, VOICE)
+    rng = np.random.default_rng(0)
     for steps in CANON_STEPS:
         for db in range(1, 9):
             for o in OCTAVES:
-                c, share = _score_entry(_moved(m, steps, db * SPB, db, KEY, o), [m], C, W_DOUBLING_CANON, VOICE)
-                if share <= MAX_CLASH_SHARE:
-                    assert chosen <= c + 1e-9
+                part = _moved(m, steps, db * SPB, db, KEY, o)
+                for _ in range(4):      # every way of leaving notes out is no better
+                    drop = rng.random(len(part)) < 0.2
+                    alt = [{**n, "rest": True} if d else n for n, d in zip(part, drop)]
+                    c, share = canon_objective(alt, m, C, VOICE)
+                    if share <= MAX_CLASH_SHARE:
+                        assert chosen <= c + 1e-9
+
+
+def test_canon_breathes_over_a_rub():
+    """A canon note that would sit a semitone against a held lead note is left out;
+    consonant notes are all kept."""
+    from backend.harmony.textures import _prune_canon
+    m = mel([(60, 2), (64, 2), (67, 2), (65, 2)])
+    part = [{**n, "pitch": p, "t0": n["t0"], "t1": n["t1"]} for n, p in zip(m, (64, 65, 71, 69))]   # 65 vs 64: a rub
+    pruned = _prune_canon(part, m, C, VOICE)
+    assert [bool(n.get("rest")) for n in pruned] == [False, True, False, False]
 
 
 def test_echo_takes_the_best_answer_for_each_phrase():

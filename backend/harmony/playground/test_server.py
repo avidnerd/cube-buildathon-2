@@ -155,3 +155,33 @@ def test_mic_recording_without_tempo_detects_it():
     res = _analyze({"sr": 44100, "channels": 1, "source": "mic", "lyrics": 0}, y)
     assert [n["pitch"] for n in res["notes"]] == [p for p, _, _ in SUNG]
     assert res["bpm"] == pytest.approx(96, rel=0.05) or res["bpm"] == pytest.approx(48, rel=0.05)
+
+
+def test_lead_comes_back_in_tune():
+    """A singer drifting flat and sharp note to note (with vibrato) is pulled onto
+    their notes; the vibrato survives and the timing doesn't move."""
+    sr = 44100
+    off = [-25, 20, -15, 30, -30, 15, -20, 25]          # cents off on each note
+    pitches = [60, 62, 64, 65, 67, 65, 64, 62]
+    t = np.arange(int(sr * 0.5 * len(pitches) + sr)) / sr
+    f = np.full(len(t), np.nan)
+    for i, (p, c) in enumerate(zip(pitches, off)):
+        m = (t >= 0.5 + 0.5 * i) & (t < 0.5 + 0.5 * i + 0.45)
+        f[m] = 440 * 2 ** ((p + c / 100 - 69) / 12) * 2 ** (0.3 / 12 * np.sin(2 * np.pi * 5.5 * t[m]))
+    ph = 2 * np.pi * np.cumsum(np.nan_to_num(f)) / sr
+    y = np.where(np.isnan(f), 0, sum(np.sin(k * ph) / k for k in range(1, 10)) * 0.3)
+    job = api_analyze({"sr": ["44100"], "channels": ["1"], "source": ["mic"], "bpm": ["120"], "lyrics": ["0"]},
+                      _pcm(y), background=False)
+    res = api_job(job["job"])["result"]
+    assert [n["pitch"] for n in res["notes"]] == pitches
+    wav = api_render({"job": job["job"], "melody": res["notes"], "lead": True})
+    with wave.open(io.BytesIO(wav)) as w:
+        h = np.frombuffer(w.readframes(w.getnframes()), "<i2").astype(np.float64) / 32768
+    assert abs(len(h) - len(y)) < sr * 0.01
+    times, f0, _, _ = yin(h, sr)
+    tuning = res["tuning_cents"] / 100
+    for n in res["notes"]:
+        mid = (times > n["t0"] + 0.06) & (times < n["t1"] - 0.06) & np.isfinite(f0)
+        sung = 69 + 12 * np.log2(f0[mid] / 440) - tuning
+        assert abs(np.median(sung) - n["pitch"]) < 0.08, (n["pitch"], np.median(sung))     # within 8 cents
+        assert np.percentile(sung, 95) - np.percentile(sung, 5) > 0.3                        # vibrato kept

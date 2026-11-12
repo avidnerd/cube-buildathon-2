@@ -918,3 +918,67 @@ def render_part(vocals: np.ndarray, sr: int, f0_times: np.ndarray, f0_hz: np.nda
         return np.zeros_like(vocals)
     target = None if follow_slides else target_curve(melody, part, tuning_cents)
     return psola(vocals, sr, f0_times, f0_hz, t, s, target)
+
+
+TUNE_STRENGTH = 0.9     # how much of the singer's slow pitch error is taken out
+TUNE_SMOOTH_S = 0.22    # error averaged over this window: vibrato (5-7 Hz) passes through
+TUNE_ORNAMENT = 1.0     # frames further than this (semitones) from the note are slides: left alone
+TUNE_MAX_FIX = 0.8      # never move the voice more than this
+
+
+def tune_curve(f0_times: np.ndarray, f0_hz: np.ndarray, melody: Sequence[dict], tuning_cents: float = 0.0,
+               strength: float = TUNE_STRENGTH) -> tuple[np.ndarray, np.ndarray]:
+    """Semitone shift over time that moves the singer onto their notes, gently.
+
+    Per note, the gap between what was sung and the note (at the singer's own
+    overall tuning, so the lead, its harmonies and the band agree) is
+    averaged over ~TUNE_SMOOTH_S and that slow error is taken out. Vibrato is
+    faster than the window, so it survives; slides and scoops (more than
+    TUNE_ORNAMENT away) don't count towards the error. The result sounds like
+    the same singer, more in tune, not a robotic hard-tune.
+    """
+    times = np.asarray(f0_times, dtype=float)
+    hz = np.asarray(f0_hz, dtype=float)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        sung = 69.0 + 12.0 * np.log2(hz / 440.0) - tuning_cents / 100.0
+    dt = float(np.median(np.diff(times))) if len(times) > 1 else 0.01
+    half = max(1, int(round(TUNE_SMOOTH_S / dt / 2)))
+    kt: list[float] = []
+    ks: list[float] = []
+    for n in sorted(melody, key=lambda n: n["t0"]):
+        a, b = np.searchsorted(times, [n["t0"], n["t1"]])
+        if b - a < 2:
+            continue
+        err = sung[a:b] - float(n["pitch"])
+        err = (err + 6.0) % 12.0 - 6.0                       # an octave slip is still the same note
+        ok = np.isfinite(err) & (np.abs(err) <= TUNE_ORNAMENT)
+        if not ok.any():
+            continue
+        e = np.where(ok, err, 0.0)
+        k = np.ones(2 * half + 1)
+        num = np.convolve(e, k)[half: half + len(e)]          # centred moving sums
+        den = np.convolve(ok.astype(float), k)[half: half + len(e)]
+        slow = np.where(den > 0, num / np.maximum(den, 1e-9), np.nan)
+        fill = float(np.median(err[ok]))                      # where the window saw only slides
+        slow = np.where(np.isfinite(slow), slow, fill)
+        fix = -strength * np.clip(slow, -TUNE_MAX_FIX, TUNE_MAX_FIX)
+        kt += list(times[a:b])
+        ks += list(fix)
+    return np.array(kt), np.array(ks)
+
+
+def tune_lead(vocals: np.ndarray, sr: int, f0_times: np.ndarray, f0_hz: np.ndarray, melody: Sequence[dict],
+              tuning_cents: float = 0.0, strength: float = TUNE_STRENGTH) -> np.ndarray:
+    """The lead's own take, pitch-corrected onto its notes (timing and voice unchanged)."""
+    t, s = tune_curve(f0_times, f0_hz, melody, tuning_cents, strength)
+    if len(t) == 0:
+        return np.asarray(vocals, dtype=np.float64).copy()
+    return psola(vocals, sr, f0_times, f0_hz, t, s)
+
+
+def heard_after_tuning(heard: float, pitch: int, strength: float = TUNE_STRENGTH) -> float:
+    """Where a note sung at `heard` (MIDI, at the singer's tuning) lands once tune_lead has run."""
+    err = (heard - pitch + 6.0) % 12.0 - 6.0
+    if abs(err) > TUNE_ORNAMENT:
+        return heard
+    return heard - strength * float(np.clip(err, -TUNE_MAX_FIX, TUNE_MAX_FIX))
